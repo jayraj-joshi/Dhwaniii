@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Resonance", lifespan=lifespan)
 if config.CORS_ORIGINS:  # no credentials are used (D10), so "*" headers are safe; Range is what <audio> sends, Content-Range what it reads back
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"],
-                       expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"], max_age=86400)
+                       expose_headers=["Content-Range", "Accept-Ranges", "Content-Length", "Content-Disposition"], max_age=86400)
 app.include_router(profiles.router)
 app.include_router(search.router)
 app.include_router(tracks.router)

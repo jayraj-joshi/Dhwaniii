@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import type { CacheState, RemoteTrack, Track } from "../types";
 import { api, downloadUrl } from "./api";
+import { names } from "./format";
 import { toast } from "./toast";
 
 interface TrackStore {
@@ -65,7 +66,10 @@ export async function toggleLike(t: Track & { liked: boolean }) {
   }
 }
 
-/** Saves the track's audio file to the device's downloads, where the file manager sees it. */
+/** Saves the track's audio file to the device's downloads, where the file manager sees it.
+ *  Fetched as a blob rather than a plain <a download> click: the API is on another origin, and a
+ *  cross-origin anchor click ignores the download attribute and navigates the tab on any non-200
+ *  response (no Content-Disposition yet) instead of failing visibly. */
 export async function downloadToDevice(t: Track) {
   const state = useTracks.getState().cacheByVid[t.video_id] ?? t.cache_state;
   if (state !== "cached") {
@@ -73,12 +77,23 @@ export async function downloadToDevice(t: Track) {
     await api.post(`/api/tracks/${t.video_id}/cache`).catch(() => {});
     return;
   }
-  const a = document.createElement("a");
-  a.href = downloadUrl(t.video_id);
-  a.download = "";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  try {
+    const res = await fetch(downloadUrl(t.video_id));
+    if (!res.ok) throw new Error("Download failed. Try again.");
+    const filename = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1]
+      ?? `${names(t.artists)} - ${t.title}`.replace(/[\\/:*?"<>|]/g, "");
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch (e) {
+    toast((e as Error).message || "Download failed", "error");
+  }
 }
 
 /** A track by id from the cache, fetching it when missing (the queue only stores ids). */
