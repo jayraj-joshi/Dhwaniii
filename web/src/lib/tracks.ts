@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import type { CacheState, RemoteTrack, Track } from "../types";
-import { api } from "./api";
+import { api, downloadUrl } from "./api";
 import { toast } from "./toast";
 
 interface TrackStore {
@@ -63,6 +63,22 @@ export async function toggleLike(t: Track & { liked: boolean }) {
     useTracks.setState((s) => ({ liked: { ...s.liked, [t.id]: !want } }));
     toast((e as Error).message, "error");
   }
+}
+
+/** Saves the track's audio file to the device's downloads, where the file manager sees it. */
+export async function downloadToDevice(t: Track) {
+  const state = useTracks.getState().cacheByVid[t.video_id] ?? t.cache_state;
+  if (state !== "cached") {
+    toast("Preparing download — try again in a few seconds");
+    await api.post(`/api/tracks/${t.video_id}/cache`).catch(() => {});
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = downloadUrl(t.video_id);
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 /** A track by id from the cache, fetching it when missing (the queue only stores ids). */

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { names } from "../lib/format";
 import { toast } from "../lib/toast";
-import { ensureTracks, toggleLike, useTrack, useTracks } from "../lib/tracks";
+import { downloadToDevice, ensureTracks, toggleLike, useTrack, useTracks } from "../lib/tracks";
 import { closeMenu, closePicker, openPicker, setQueueOpen, useUi } from "../lib/ui";
 import { isTrack, jump, queueItems, removeQueued, usePlayer, type PlayItem } from "../player/engine";
 import * as Q from "../player/queue";
@@ -56,6 +56,7 @@ function TrackMenu() {
             <Action icon="queue" onClick={() => { void queueItems([item], "end"); closeMenu(); }}>Add to queue</Action>
             <Action icon={liked ? "heart-fill" : "heart"} onClick={() => { closeMenu(); void asTrack(item).then((t) => toggleLike({ ...t, liked })).catch((e) => toast(e.message, "error")); }}>{liked ? "Remove from Liked Songs" : "Add to Liked Songs"}</Action>
             <Action icon="plus" onClick={() => openPicker(item)}>Add to playlist</Action>
+            <Action icon="download" onClick={() => { closeMenu(); void asTrack(item).then(downloadToDevice).catch((e) => toast(e.message, "error")); }}>Download to device</Action>
             {pl && (
               <>
                 {pl.index > 0 && <Action icon="up" onClick={() => void playlistCall(() => api.patch(`/api/playlists/${pl.id}/tracks`, { item_id: pl.itemId, before_item_id: pl.firstItemId }), "Moved to top")}>Move to top</Action>}

@@ -90,6 +90,31 @@ def test_cached_file_served_with_ranges_and_play_counted_once(client, tmp_path, 
     assert client.get(f"/api/stream/{v}").status_code == 401
 
 
+def test_download_sends_attachment_header_with_artist_and_title(client, tmp_path, monkeypatch):
+    h, v = profile(client), vid()
+    monkeypatch.setattr(config, "AUDIO_DIR", str(tmp_path))
+    rel = f"{v[:2]}/{v[2:4]}/{v}.m4a"
+    (tmp_path / v[:2] / v[2:4]).mkdir(parents=True)
+    (tmp_path / rel).write_bytes(DATA)
+
+    async def seed(c):
+        a = await c.fetchval("INSERT INTO artists (name, name_norm) VALUES ('The Band', $1) RETURNING id", v)
+        t = await c.fetchval("INSERT INTO tracks (title, title_norm, primary_artist_id) VALUES ('A Song', 't', $1) RETURNING id", a)
+        s = await c.fetchval("INSERT INTO sources (track_id, video_id) VALUES ($1, $2) RETURNING id", t, v)
+        await c.execute("INSERT INTO track_artists (track_id, artist_id, role, position) VALUES ($1, $2, 'primary', 0)", t, a)
+        await c.execute("INSERT INTO files (source_id, path, codec, bytes) VALUES ($1, $2, 'm4a', $3)", s, rel, len(DATA))
+    run(seed)
+
+    r = client.get(f"/api/stream/{v}?download=1", headers=h)
+    assert r.status_code == 200 and r.content == DATA
+    assert r.headers["content-disposition"] == 'attachment; filename="The Band - A Song.m4a"'
+
+
+def test_download_of_uncached_track_is_409(client):
+    h, v = profile(client), vid()
+    assert client.get(f"/api/stream/{v}?download=1", headers=h).status_code == 409
+
+
 def test_miss_streams_live_creates_one_job_and_one_arq_job(client, live):
     calls, resolved = live
     h, v = profile(client), vid()

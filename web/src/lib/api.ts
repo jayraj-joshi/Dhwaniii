@@ -14,6 +14,7 @@ export function url(path: string): string {
   return BASE + path + (pid ? (path.includes("?") ? "&" : "?") + "profile=" + pid : "");
 }
 export const streamUrl = (videoId: string) => url(`/api/stream/${videoId}`);
+export const downloadUrl = (videoId: string) => url(`/api/stream/${videoId}?download=1`);
 export const wsUrl = (device: string, name: string) =>
   `${(BASE || location.origin).replace(/^http/, "ws")}/ws?profile=${getProfileId()}&device=${encodeURIComponent(device)}&name=${encodeURIComponent(name)}`;
 /** Art and other server-relative paths become absolute; remote thumbnails pass through. */

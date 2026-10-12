@@ -50,16 +50,29 @@ async def _live(request: Request, video_id: str) -> StreamingResponse:
     return StreamingResponse(body(), status_code=status, headers=headers)
 
 
+def _attachment_name(title: str, artists: str, codec: str) -> str:
+    name = f"{artists} - {title}" if artists else title
+    name = "".join(c for c in name if c not in '\\/:*?"<>|').strip() or "track"
+    return f"{name}.{codec or 'm4a'}"
+
+
 @router.get("/stream/{video_id}")
-async def stream(video_id: VideoId, request: Request, p=Depends(current_profile)):
+async def stream(video_id: VideoId, request: Request, download: bool = Query(False), p=Depends(current_profile)):
     s = request.app.state
     row = await s.pool.fetchrow(
-        "SELECT f.source_id, f.path, f.codec FROM sources s JOIN files f ON f.source_id = s.id WHERE s.video_id = $1", video_id)
+        """SELECT f.source_id, f.path, f.codec, t.title,
+                  (SELECT string_agg(a.name, ', ' ORDER BY ta.position)
+                     FROM track_artists ta JOIN artists a ON a.id = ta.artist_id WHERE ta.track_id = t.id) AS artists
+           FROM sources s JOIN files f ON f.source_id = s.id JOIN tracks t ON t.id = s.track_id WHERE s.video_id = $1""",
+        video_id)
     if row and (path := storage.resolve(row["path"])):
         rng = request.headers.get("range")
         if not rng or rng.replace(" ", "").startswith("bytes=0-"):  # count a play once, not once per chunk
             await s.pool.execute("UPDATE files SET last_played = $2 WHERE source_id = $1", row["source_id"], datetime.now(timezone.utc))
-        return FileResponse(path, media_type=FILE_MIME.get(row["codec"], "audio/mp4"))
+        headers = {"Content-Disposition": f'attachment; filename="{_attachment_name(row["title"], row["artists"], row["codec"])}"'} if download else None
+        return FileResponse(path, media_type=FILE_MIME.get(row["codec"], "audio/mp4"), headers=headers)
+    if download:
+        raise HTTPException(409, "Not downloaded to the server yet. Try again in a moment.")
     await request_download(s.pool, s.redis, s.arq, video_id, "high")  # play it live, and keep a copy for next time
     return await _live(request, video_id)
 

@@ -35,6 +35,7 @@ const ICONS = {
   image: line(<><rect x="4" y="5" width="16" height="14" rx="2" /><path d="m4 16 4.500-4.500L13 16l3-3 4 4" /><circle cx="15.500" cy="9.500" r="1.200" /></>),
   up: line(<path d="m6 14.500 6-6 6 6" />),
   upload: line(<path d="M12 16V5M7.500 9.500 12 5l4.500 4.500M5 19h14" />),
+  download: line(<path d="M12 5v11M7.500 11.500 12 16l4.500-4.500M5 19h14" />),
 } as const;
 
 export type IconName = keyof typeof ICONS;
