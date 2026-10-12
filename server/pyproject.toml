@@ -1,0 +1,25 @@
+[project]
+name = "resonance-server"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "asyncpg",
+    "redis",
+    "arq",
+    "httpx",
+    "yt-dlp[default]",
+    "ytmusicapi",
+    "python-multipart",
+]
+
+[dependency-groups]
+dev = ["pytest"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

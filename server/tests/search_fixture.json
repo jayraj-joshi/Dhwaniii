@@ -1,0 +1,550 @@
+{
+ "tracks": [
+  {
+   "key": "tum-hi-ho",
+   "title": "Tum Hi Ho",
+   "artists": [
+    "Arijit Singh"
+   ],
+   "album": "Aashiqui 2",
+   "plays": 0
+  },
+  {
+   "key": "kesariya",
+   "title": "Kesariya",
+   "artists": [
+    "Arijit Singh"
+   ],
+   "album": "Brahmastra",
+   "plays": 0
+  },
+  {
+   "key": "channa",
+   "title": "Channa Mereya",
+   "artists": [
+    "Arijit Singh"
+   ],
+   "album": "Ae Dil Hai Mushkil",
+   "plays": 0
+  },
+  {
+   "key": "apna",
+   "title": "Apna Bana Le",
+   "artists": [
+    "Arijit Singh"
+   ],
+   "album": "Bhediya",
+   "plays": 0
+  },
+  {
+   "key": "hawayein",
+   "title": "Hawayein",
+   "artists": [
+    "Arijit Singh"
+   ],
+   "album": "Jab Harry Met Sejal",
+   "plays": 0
+  },
+  {
+   "key": "zaalima",
+   "title": "Zaalima",
+   "artists": [
+    "Arijit Singh"
+   ],
+   "album": "Raees",
+   "plays": 0
+  },
+  {
+   "key": "lover",
+   "title": "Lover",
+   "artists": [
+    "Diljit Dosanjh"
+   ],
+   "album": "MoonChild Era",
+   "plays": 0
+  },
+  {
+   "key": "born-to-shine",
+   "title": "Born To Shine",
+   "artists": [
+    "Diljit Dosanjh"
+   ],
+   "album": "G.O.A.T.",
+   "plays": 0
+  },
+  {
+   "key": "excuses",
+   "title": "Excuses",
+   "artists": [
+    "AP Dhillon"
+   ],
+   "album": "Hidden Gems",
+   "plays": 0
+  },
+  {
+   "key": "brown-munde",
+   "title": "Brown Munde",
+   "artists": [
+    "AP Dhillon"
+   ],
+   "album": "Hidden Gems",
+   "plays": 0
+  },
+  {
+   "key": "vaseegara",
+   "title": "Vaseegara",
+   "artists": [
+    "Bombay Jayashri"
+   ],
+   "album": "Minnalae",
+   "plays": 0
+  },
+  {
+   "key": "munbe-vaa",
+   "title": "Munbe Vaa",
+   "artists": [
+    "Shreya Ghoshal"
+   ],
+   "album": "Sillunu Oru Kaadhal",
+   "plays": 0
+  },
+  {
+   "key": "shape",
+   "title": "Shape of You",
+   "artists": [
+    "Ed Sheeran"
+   ],
+   "album": "Divide",
+   "plays": 0
+  },
+  {
+   "key": "perfect",
+   "title": "Perfect",
+   "artists": [
+    "Ed Sheeran"
+   ],
+   "album": "Divide",
+   "plays": 0
+  },
+  {
+   "key": "blinding",
+   "title": "Blinding Lights",
+   "artists": [
+    "The Weeknd"
+   ],
+   "album": "After Hours",
+   "plays": 0
+  },
+  {
+   "key": "save-tears",
+   "title": "Save Your Tears",
+   "artists": [
+    "The Weeknd"
+   ],
+   "album": "After Hours",
+   "plays": 0
+  },
+  {
+   "key": "levitating",
+   "title": "Levitating",
+   "artists": [
+    "Dua Lipa"
+   ],
+   "album": "Future Nostalgia",
+   "plays": 0
+  },
+  {
+   "key": "dont-start",
+   "title": "Don't Start Now",
+   "artists": [
+    "Dua Lipa"
+   ],
+   "album": "Future Nostalgia",
+   "plays": 0
+  },
+  {
+   "key": "blank-space",
+   "title": "Blank Space",
+   "artists": [
+    "Taylor Swift"
+   ],
+   "album": "1989",
+   "plays": 0
+  },
+  {
+   "key": "shake",
+   "title": "Shake It Off",
+   "artists": [
+    "Taylor Swift"
+   ],
+   "album": "1989",
+   "plays": 0
+  },
+  {
+   "key": "yellow",
+   "title": "Yellow",
+   "artists": [
+    "Coldplay"
+   ],
+   "album": "Parachutes",
+   "plays": 0
+  },
+  {
+   "key": "fix-you",
+   "title": "Fix You",
+   "artists": [
+    "Coldplay"
+   ],
+   "album": "X&Y",
+   "plays": 0
+  },
+  {
+   "key": "silence",
+   "title": "The Sound of Silence",
+   "artists": [
+    "Simon & Garfunkel"
+   ],
+   "album": "Sounds of Silence",
+   "plays": 0
+  },
+  {
+   "key": "robinson",
+   "title": "Mrs. Robinson",
+   "artists": [
+    "Simon & Garfunkel"
+   ],
+   "album": "Bookends",
+   "plays": 0
+  },
+  {
+   "key": "rockstar",
+   "title": "Rockstar",
+   "artists": [
+    "Post Malone",
+    "21 Savage"
+   ],
+   "album": "Beerbongs & Bentleys",
+   "plays": 0
+  },
+  {
+   "key": "bohemian",
+   "title": "Bohemian Rhapsody",
+   "artists": [
+    "Queen"
+   ],
+   "album": "A Night at the Opera",
+   "plays": 0
+  },
+  {
+   "key": "tum-hi-ho-hi",
+   "title": "तुम ही हो",
+   "artists": [
+    "अरिजीत सिंह"
+   ],
+   "album": "आशिकी 2",
+   "plays": 0
+  },
+  {
+   "key": "kun-faya-kun",
+   "title": "Kun Faya Kun",
+   "artists": [
+    "A.R. Rahman"
+   ],
+   "album": "Rockstar",
+   "plays": 0
+  },
+  {
+   "key": "jai-ho",
+   "title": "Jai Ho",
+   "artists": [
+    "A.R. Rahman"
+   ],
+   "album": "Slumdog Millionaire",
+   "plays": 0
+  },
+  {
+   "key": "chaiyya",
+   "title": "Chaiyya Chaiyya",
+   "artists": [
+    "Sukhwinder Singh"
+   ],
+   "album": "Dil Se",
+   "plays": 0
+  },
+  {
+   "key": "kabira",
+   "title": "Kabira",
+   "artists": [
+    "Tochi Raina"
+   ],
+   "album": "Yeh Jawaani Hai Deewani",
+   "plays": 0
+  },
+  {
+   "key": "tum-se-hi",
+   "title": "Tum Se Hi",
+   "artists": [
+    "Mohit Chauhan"
+   ],
+   "album": "Jab We Met",
+   "plays": 0
+  },
+  {
+   "key": "agar-tum",
+   "title": "Agar Tum Saath Ho",
+   "artists": [
+    "Alka Yagnik"
+   ],
+   "album": "Tamasha",
+   "plays": 0
+  },
+  {
+   "key": "raataan",
+   "title": "Raataan Lambiyan",
+   "artists": [
+    "Jubin Nautiyal"
+   ],
+   "album": "Shershaah",
+   "plays": 0
+  },
+  {
+   "key": "husn",
+   "title": "Husn",
+   "artists": [
+    "Anuv Jain"
+   ],
+   "album": "Husn",
+   "plays": 0
+  },
+  {
+   "key": "tera-ban",
+   "title": "Tera Ban Jaunga",
+   "artists": [
+    "Akhil Sachdeva"
+   ],
+   "album": "Kabir Singh",
+   "plays": 0
+  },
+  {
+   "key": "believer",
+   "title": "Believer",
+   "artists": [
+    "Imagine Dragons"
+   ],
+   "album": "Evolve",
+   "plays": 0
+  },
+  {
+   "key": "radioactive",
+   "title": "Radioactive",
+   "artists": [
+    "Imagine Dragons"
+   ],
+   "album": "Night Visions",
+   "plays": 0
+  },
+  {
+   "key": "someone-like-you",
+   "title": "Someone Like You",
+   "artists": [
+    "Adele"
+   ],
+   "album": "21",
+   "plays": 0
+  },
+  {
+   "key": "hello-adele",
+   "title": "Hello",
+   "artists": [
+    "Adele"
+   ],
+   "album": "25",
+   "plays": 0
+  },
+  {
+   "key": "hello-lionel",
+   "title": "Hello",
+   "artists": [
+    "Lionel Richie"
+   ],
+   "album": "Can't Slow Down",
+   "plays": 25
+  },
+  {
+   "key": "halo",
+   "title": "Halo",
+   "artists": [
+    "Beyoncé"
+   ],
+   "album": "I Am... Sasha Fierce",
+   "plays": 0
+  }
+ ],
+ "queries": [
+  {
+   "q": "tum hi ho",
+   "expect": "hit",
+   "rank1": "tum-hi-ho"
+  },
+  {
+   "q": "Tum Hi Ho Arijit Singh",
+   "expect": "hit",
+   "rank1": "tum-hi-ho"
+  },
+  {
+   "q": "arijit singh tum hi ho official video",
+   "expect": "hit",
+   "rank1": "tum-hi-ho"
+  },
+  {
+   "q": "kesariya",
+   "expect": "hit",
+   "rank1": "kesariya"
+  },
+  {
+   "q": "kesariya brahmastra",
+   "expect": "hit",
+   "rank1": "kesariya"
+  },
+  {
+   "q": "arijit singh",
+   "expect": "hit"
+  },
+  {
+   "q": "arijit",
+   "expect": "hit"
+  },
+  {
+   "q": "shape of you",
+   "expect": "hit",
+   "rank1": "shape"
+  },
+  {
+   "q": "ed sheeran perfect",
+   "expect": "hit",
+   "rank1": "perfect"
+  },
+  {
+   "q": "dont start now",
+   "expect": "hit",
+   "rank1": "dont-start"
+  },
+  {
+   "q": "Don't Start Now Dua Lipa lyrics",
+   "expect": "hit",
+   "rank1": "dont-start"
+  },
+  {
+   "q": "simon and garfunkel",
+   "expect": "hit"
+  },
+  {
+   "q": "simon & garfunkel sound of silence",
+   "expect": "hit",
+   "rank1": "silence"
+  },
+  {
+   "q": "तुम ही हो",
+   "expect": "hit",
+   "rank1": "tum-hi-ho-hi"
+  },
+  {
+   "q": "vaseegara",
+   "expect": "hit",
+   "rank1": "vaseegara"
+  },
+  {
+   "q": "bombay jayashri vaseegara",
+   "expect": "hit",
+   "rank1": "vaseegara"
+  },
+  {
+   "q": "kun faya kun",
+   "expect": "hit",
+   "rank1": "kun-faya-kun"
+  },
+  {
+   "q": "weeknd",
+   "expect": "hit"
+  },
+  {
+   "q": "blinding",
+   "expect": "hit",
+   "rank1": "blinding"
+  },
+  {
+   "q": "rahman",
+   "expect": "hit"
+  },
+  {
+   "q": "agar tum saath ho",
+   "expect": "hit",
+   "rank1": "agar-tum"
+  },
+  {
+   "q": "beyonce halo",
+   "expect": "hit",
+   "rank1": "halo"
+  },
+  {
+   "q": "BEYONCÉ",
+   "expect": "hit",
+   "rank1": "halo"
+  },
+  {
+   "q": "hello adele",
+   "expect": "hit",
+   "rank1": "hello-adele"
+  },
+  {
+   "q": "hello lionel richie",
+   "expect": "hit",
+   "rank1": "hello-lionel"
+  },
+  {
+   "q": "hello",
+   "expect": "hit",
+   "rank1": "hello-lionel"
+  },
+  {
+   "q": "tum hee ho",
+   "expect": "miss",
+   "rank1": "tum-hi-ho"
+  },
+  {
+   "q": "kesaria",
+   "expect": "miss",
+   "rank1": "kesariya"
+  },
+  {
+   "q": "bohemian rapsody",
+   "expect": "miss",
+   "rank1": "bohemian"
+  },
+  {
+   "q": "blank spaces",
+   "expect": "miss",
+   "rank1": "blank-space"
+  },
+  {
+   "q": "arijit sin",
+   "expect": "miss"
+  },
+  {
+   "q": "taylor swift anti hero",
+   "expect": "miss"
+  },
+  {
+   "q": "ed sheeran castle on the hill",
+   "expect": "miss"
+  },
+  {
+   "q": "something completely unknown",
+   "expect": "miss"
+  },
+  {
+   "q": "zzzz qqqq",
+   "expect": "miss"
+  }
+ ]
+}

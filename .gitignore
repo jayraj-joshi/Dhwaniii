@@ -1,0 +1,13 @@
+.env
+audio/
+cookies/
+.venv/
+node_modules/
+dist/
+__pycache__/
+spikes/
+scratch/
+backups/
+.DS_Store
+.pytest_cache/
+*.pyc

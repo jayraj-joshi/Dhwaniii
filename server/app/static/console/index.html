@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resonance test console</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Resonance <small>API test console</small></h1>
+    <label>Profile <select id="profile"></select></label>
+    <form id="new-profile" class="inline"><input name="name" placeholder="new profile name" required maxlength="40"><button>Create</button></form>
+    <span id="ws-dot" class="dot" title="WebSocket"></span><span id="ws-text">offline</span>
+    <a href="/docs" target="_blank" rel="noopener">OpenAPI docs</a>
+  </header>
+  <nav id="tabs"></nav>
+
+  <main>
+    <section id="tab-search" hidden>
+      <form id="search-form" class="inline">
+        <input name="q" placeholder="Search songs, artists, albums…" autofocus required>
+        <select name="type"><option>all</option><option>songs</option><option>artists</option><option>albums</option><option>playlists</option></select>
+        <select name="remote"><option>auto</option><option>always</option><option>never</option></select>
+        <button>Search</button>
+      </form>
+      <p id="search-stats" class="muted"></p>
+      <div id="search-results"></div>
+    </section>
+
+    <section id="tab-library" hidden>
+      <div class="row"><button id="lib-refresh">Refresh</button>
+        <form id="new-playlist" class="inline"><input name="name" placeholder="new playlist" required maxlength="100"><button>Create playlist</button></form></div>
+      <div id="library"></div>
+    </section>
+
+    <section id="tab-home" hidden><button id="home-refresh">Reload home feed</button><div id="home"></div></section>
+
+    <section id="tab-stats" hidden>
+      <div class="row">
+        <label>Stats range <select id="stats-range"><option>4w</option><option>6m</option><option>1y</option><option>all</option></select></label>
+        <label>Wrapped year <input id="wrapped-year" type="number" min="2000" max="2100" style="width:5.5em"></label>
+        <button id="stats-load">Load</button>
+      </div>
+      <div id="stats"></div>
+    </section>
+
+    <section id="tab-import" hidden>
+      <h3>YouTube / YouTube Music playlist</h3>
+      <form id="import-url" class="inline"><input name="url" placeholder="https://music.youtube.com/playlist?list=…" required size="50"><input name="name" placeholder="name (optional)"><button>Import</button></form>
+      <h3>CSV file (Exportify or title,artist,album,duration_ms)</h3>
+      <form id="import-csv" class="inline"><input type="file" name="file" accept=".csv,text/csv" required><input name="name" placeholder="name (optional)"><button>Upload</button></form>
+      <div id="import-status"></div>
+    </section>
+
+    <section id="tab-live" hidden>
+      <h3>Devices (this browser is <code id="my-device"></code>)</h3>
+      <div id="devices"></div>
+      <h3>Server's stored queue/state</h3><pre id="server-state" class="json">(connect first)</pre>
+      <h3>WebSocket events</h3><button id="clear-events">Clear</button><pre id="events" class="json"></pre>
+    </section>
+
+    <section id="tab-admin" hidden><button id="admin-refresh">Refresh</button><div id="admin"></div></section>
+
+    <section id="tab-explorer" hidden>
+      <form id="explorer-form" class="stack">
+        <div class="row"><select name="method"><option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option><option>DELETE</option></select>
+          <input name="path" value="/api/me" size="50" required></div>
+        <textarea name="body" rows="5" placeholder='JSON body, e.g. {"name": "My list"}'></textarea>
+        <div><button>Send</button> <span class="muted">sends your selected profile in <code>X-Profile-Id</code></span></div>
+      </form>
+      <pre id="explorer-out" class="json"></pre>
+    </section>
+
+    <aside id="detail" hidden><button id="detail-close" class="close">✕</button><div id="detail-body"></div></aside>
+  </main>
+
+  <footer>
+    <div id="now">Nothing playing</div>
+    <audio id="player" controls></audio>
+    <details><summary>Request log</summary><pre id="log" class="json"></pre></details>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

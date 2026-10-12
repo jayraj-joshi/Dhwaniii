@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports: ["${POSTGRES_PORT}:5432"]
+    volumes:
+      - pg:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports: ["${REDIS_PORT}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./server
+    restart: unless-stopped
+    ports: ["127.0.0.1:8000:8000"]  # this machine only; the test console is at http://localhost:8000/console/
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      AUDIO_DIR: /audio
+      YTDLP_COOKIES_FILE: /cookies/cookies.txt
+    volumes:
+      - ./audio:/audio
+      - ./cookies:/cookies:ro
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      retries: 10
+
+  worker:
+    build: ./server
+    restart: unless-stopped
+    command: ["arq", "app.worker.Settings"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      AUDIO_DIR: /audio
+      YTDLP_COOKIES_FILE: /cookies/cookies.txt
+    volumes:
+      - ./audio:/audio
+      - ./cookies:/cookies:ro
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  web:
+    build:
+      context: ./web
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}  # the API's own address as the browser sees it (e.g. https://api.example.com)
+    restart: unless-stopped
+    ports: ["3000:80"]
+    depends_on:
+      api: {condition: service_healthy}
+
+volumes:
+  pg: {}
