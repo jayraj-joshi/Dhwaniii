@@ -568,7 +568,7 @@ These are FastAPI's defaults: JSON bodies, and errors returned as `{"detail": ".
 | 1 | `PATCH /api/me` | `{name?, avatar?, prefs?}` | `prefs` is shallow-merged |
 | 1 | `GET /api/search` | `q`, `type=all\|songs\|artists\|albums\|playlists` (default `all`), `remote=auto\|always\|never` (D26) | `{query_norm, cache_hit, top: {kind, item} \| null, songs: Track[], artists: ArtistSummary[], albums: AlbumSummary[], playlists: PlaylistSummary[], youtube: RemoteTrack[]}`. `cache_hit` uses the songs score only. `youtube` leaves out any `video_id` already in `songs`. YouTube artist and album tabs come in Phase 3 (M3.1). |
 | 1 | `GET /api/suggest` | `q` | ≤ 8 `{kind: track\|artist\|album, id, label, sublabel}`. Local only, under 30 ms, minimum 2 characters. |
-| 1 | `GET /api/stream/{video_id}` | Range header | Audio bytes (D29 and D30). Works for any valid `video_id`. |
+| 1 | `GET /api/stream/{video_id}` | Range header, `download=1?` | Audio bytes (D29 and D30). Works for any valid `video_id`. `download=1` adds `Content-Disposition: attachment` with an "Artist - Title" filename, so the browser saves the file instead of streaming it; 409 if the file isn't cached yet (added 2026-10-13, for save-to-device). |
 | 1 | `POST /api/tracks/ensure` | `TrackHint[]` (≤ 200) | `Track[]` in the same order (D13) |
 | 1 | `GET /api/tracks/{id:int}` | — | Track + `sources: [{video_id, channel, quality_score, cached}]` + `has_lyrics` (null until Phase 2) |
 | 1 | `POST /api/tracks/{video_id}/cache` | `priority=high\|low` | `{cache_state}`. The path parameter is a **video_id**, as in the doc. |

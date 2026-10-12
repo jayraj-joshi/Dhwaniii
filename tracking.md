@@ -199,6 +199,10 @@ Checked in headless Chrome against the real API (cross-origin :5173 -> :8000, an
 
 Run: `cd web && npm run dev` (needs `CORS_ORIGINS` to include `http://localhost:5173`, set in `.env`), `npm test`, `npm run build`. Production: set `VITE_API_URL` (the API's public URL) and `CORS_ORIGINS` (the web app's public origin) in `.env`, then `docker compose up -d --build api web`.
 
+## Download to device (2026-10-13)
+
+Added a way to save a track's audio as a real file in the OS downloads folder (file manager, not the PWA's IndexedDB offline cache from M4.2, which is still unbuilt). `GET /api/stream/{video_id}?download=1` serves the cached file with `Content-Disposition: attachment; filename="Artist - Title.m4a"` when it's already on disk, 409 otherwise. Track menu gained "Download to device": it requests a high-priority cache first if needed, then clicks a hidden `<a download>` pointed at that URL. Tests in `server/tests/test_stream.py` (attachment header content, 409 on a miss); frontend typecheck and vitest still pass. Verified against the running containers with `curl` against a real cached track: correct header and file bytes.
+
 ## Next steps
 
 **Backend only (D48). Phases 1 to 4 (backend) and M5.5-B stats/Wrapped are complete** (lyrics and radio were skipped by decision). Still open, all optional (planning.md §11, any order; ask the user which): M5.1-B mood/genre browse, M5.2 Daily Mixes, M5.3 Discover Weekly, M5.4 Release Radar, M5.6-B collaborative playlists + folders, M5.9 MinIO. Phase 6 (authentication or at least a per-profile PIN) is undecided: D44 means anyone who can reach the server can read any profile's history and stats.
