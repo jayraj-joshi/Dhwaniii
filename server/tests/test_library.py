@@ -115,7 +115,11 @@ def test_recent_search_art(client):
     client.post("/api/me/searches", json={"query": "remote", "video_id": "abcdefghijk"}, headers=h)
     assert art() == ["https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg", None]  # not in the library: YouTube's thumbnail
     t = mk_track(client, h)
+    run(lambda c: c.execute("UPDATE tracks SET artwork_path = 'art/track/x.jpg' WHERE id = $1", t["id"]))
     client.post("/api/me/searches", json={"query": "remote", "video_id": t["video_id"]}, headers=h)
     client.post("/api/me/searches", json={"query": "Remote"}, headers=h)  # searched again without playing: keeps the song
     assert art()[0] == f"/api/art/track/{t['id']}"
     assert client.post("/api/me/searches", json={"query": "x", "video_id": "../etc"}, headers=h).status_code == 422
+    old = mk_track(client, h, title="Zanzibar Moonquake")  # no artwork file yet
+    client.post("/api/me/searches", json={"query": "zanzibar moonquake"}, headers=h)  # no song recorded: the library's top match
+    assert art()[0] == f"https://i.ytimg.com/vi/{old['video_id']}/mqdefault.jpg"

@@ -6,10 +6,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
-from ..text import normalize
+from .. import config
+from ..text import normalize, normalize_query
 from ..tracks import get_tracks, request_downloads_for_tracks
 from .playlists import PLAYLIST_SELECT, RECENT_ORDER, owned, playlist_json
-from .search import album_json, artist_json
+from .search import album_json, artist_json, search_songs
 from .profiles import current_profile
 
 router = APIRouter(prefix="/api")
@@ -146,19 +147,36 @@ class SearchIn(BaseModel):
     video_id: str | None = Field(None, pattern=r"^[A-Za-z0-9_-]{11}$")  # the song played from this search (D12)
 
 
-def search_art(video_id: str | None, track_id: int | None) -> str | None:
-    """Our own artwork once the song is in the library, else YouTube's thumbnail."""
-    if track_id:
-        return f"/api/art/track/{track_id}"
-    return f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else None
+SEARCH_ART_SQL = """
+SELECT t.id, t.artwork_path IS NOT NULL AS has_art,
+       (SELECT video_id FROM sources WHERE track_id = t.id ORDER BY quality_score DESC, id LIMIT 1) AS video_id
+FROM tracks t WHERE t.id = ANY($1)
+"""
 
 
 @router.get("/me/searches")
 async def list_searches(request: Request, p=Depends(current_profile)):
-    rows = await request.app.state.pool.fetch(
+    pool = request.app.state.pool
+    rows = await pool.fetch(
         "SELECT rs.query, rs.searched_at, rs.video_id, s.track_id FROM recent_searches rs "
         "LEFT JOIN sources s ON s.video_id = rs.video_id WHERE rs.profile_id = $1 ORDER BY rs.searched_at DESC LIMIT 20", p["id"])
-    return [{"query": r["query"], "searched_at": r["searched_at"], "art_url": search_art(r["video_id"], r["track_id"])} for r in rows]
+    picks = []  # (row, track id or None)
+    for r in rows:
+        track_id = r["track_id"]
+        if not r["video_id"]:  # saved before songs were recorded, or nothing was played: the library's confident top match
+            # ponytail: one search query per row (~2 ms each, ≤ 20 rows); batch it if the list grows
+            top = await search_songs(pool, p["id"], normalize_query(r["query"]))
+            track_id = top[0][0] if top and top[0][1] >= config.SEARCH_HIT_THRESHOLD else None
+        picks.append((r, track_id))
+    tracks = {t["id"]: t for t in await pool.fetch(SEARCH_ART_SQL, [tid for _, tid in picks if tid])}
+    out = []
+    for r, tid in picks:
+        t = tracks.get(tid)
+        vid = r["video_id"] or (t and t["video_id"])
+        # our own artwork when the track has some, else YouTube's thumbnail of the video, else the client shows its icon
+        art = f"/api/art/track/{tid}" if t and t["has_art"] else f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg" if vid else None
+        out.append({"query": r["query"], "searched_at": r["searched_at"], "art_url": art})
+    return out
 
 
 @router.post("/me/searches", status_code=204)
