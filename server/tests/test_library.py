@@ -106,3 +106,16 @@ def test_recent_searches(client):
     assert client.delete("/api/me/searches", headers=h1).status_code == 204 and client.get("/api/me/searches", headers=h1).json() == []
     post(h2, "mine"); client.delete("/api/me/searches", headers=h1)
     assert len(client.get("/api/me/searches", headers=h2).json()) == 1  # clearing one profile never touches another
+
+
+def test_recent_search_art(client):
+    h = prof(client)
+    art = lambda: [r["art_url"] for r in client.get("/api/me/searches", headers=h).json()]
+    client.post("/api/me/searches", json={"query": "plain"}, headers=h)
+    client.post("/api/me/searches", json={"query": "remote", "video_id": "abcdefghijk"}, headers=h)
+    assert art() == ["https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg", None]  # not in the library: YouTube's thumbnail
+    t = mk_track(client, h)
+    client.post("/api/me/searches", json={"query": "remote", "video_id": t["video_id"]}, headers=h)
+    client.post("/api/me/searches", json={"query": "Remote"}, headers=h)  # searched again without playing: keeps the song
+    assert art()[0] == f"/api/art/track/{t['id']}"
+    assert client.post("/api/me/searches", json={"query": "x", "video_id": "../etc"}, headers=h).status_code == 422

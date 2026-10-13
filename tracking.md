@@ -209,6 +209,10 @@ Added a way to save a track's audio as a real file in the OS downloads folder (f
 
 The search box's suggestions only matched the local library, so a small library showed almost nothing. `GET /api/suggest/queries` returns YouTube Music's autocomplete (`ytmusicapi.get_search_suggestions`, 2 s timeout, Redis-cached; failures return `[]` uncached). The search page fetches it alongside `/api/suggest` and lists the completions under the library matches, minus any that equal a library song's title; tapping one runs that search. Test in `server/tests/test_search_remote.py` (truncation to 6, cache hit while YouTube is down, failure not cached). Frontend typecheck and vitest pass; checked the real ytmusicapi call returns plain strings.
 
+## Recent search artwork (2026-10-13)
+
+Recent searches show the artwork of the song played from that search instead of a search icon. Migration `006_recent_search_art.sql` adds a nullable `recent_searches.video_id`; `POST /api/me/searches` takes an optional `video_id` (validated, D12) and keeps the old one when it's left out; `GET` returns `art_url` (library art via `sources`, else the `i.ytimg.com` thumbnail, else null, and the client falls back to the icon). Test `test_recent_search_art` in `server/tests/test_library.py`. Frontend typecheck and vitest pass.
+
 ## Next steps
 
 **Backend only (D48). Phases 1 to 4 (backend) and M5.5-B stats/Wrapped are complete** (lyrics and radio were skipped by decision). Still open, all optional (planning.md §11, any order; ask the user which): M5.1-B mood/genre browse, M5.2 Daily Mixes, M5.3 Discover Weekly, M5.4 Release Radar, M5.6-B collaborative playlists + folders, M5.9 MinIO. Phase 6 (authentication or at least a per-profile PIN) is undecided: D44 means anyone who can reach the server can read any profile's history and stats.

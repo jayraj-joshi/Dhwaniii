@@ -264,6 +264,7 @@ details summary { cursor: pointer; font-weight: 600; }
 .suggest span:last-child { display: grid; color: var(--ink); min-width: 0; }
 .recents li { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
 .recents button:first-child { color: var(--ink); font-weight: 560; flex: 1; }
+.recent-art { width: 40px; flex: none; }
 
 /* ---- hero (playlist, album, liked) ---- */
 .hero { display: grid; gap: 14px; justify-items: start; margin-top: 4px; }

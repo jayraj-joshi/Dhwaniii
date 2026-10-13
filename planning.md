@@ -595,7 +595,7 @@ These are FastAPI's defaults: JSON bodies, and errors returned as `{"detail": ".
 | 2 | `PATCH /api/tracks/{id}` | `{title?, artists?: [names], album?, year?}` | Sets `metadata_status = 'manual'`. Rewrites the tags. |
 | 2 | `GET /api/tracks/{id}/candidates` | — | Ranked YouTube alternatives for the track (`rank_candidates`, each a RemoteTrack), for the fix-metadata choice list (M2.3) |
 | 2 | `POST /api/tracks/{id}/sources` | `{video_id}` | Adds the source and starts a high-priority download. When done it becomes the preferred source and the old file is deleted. |
-| 2 | `GET` / `POST` / `DELETE /api/me/searches` | `POST {query}` | Recent searches, newest 20 |
+| 2 | `GET` / `POST` / `DELETE /api/me/searches` | `POST {query, video_id?}` | Recent searches, newest 20: `[{query, searched_at, art_url}]`. `video_id` is the song played from that search (migration `006_recent_search_art.sql`); `art_url` is that track's `/api/art/track/{id}` once it's in the library, else YouTube's `i.ytimg.com` thumbnail, else null. Re-posting without `video_id` keeps the stored one (added 2026-10-13). |
 | 3 | `GET /api/home` | — | `{sections: [{id, title, items}]}` (M3.3) |
 | ~~3~~ | ~~`GET /api/radio/{track_id}`~~ | | **Skipped (D50).** |
 | 3 | `GET /api/artists/{id}` / `GET /api/albums/{id}` | id or `ytm:<…>` (D42) | Artist or album page |

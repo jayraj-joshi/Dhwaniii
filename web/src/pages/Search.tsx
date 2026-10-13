@@ -48,7 +48,7 @@ export default function Search() {
     queryKey: ["search", q, tab, deep], enabled: !!q.trim(), placeholderData: keepPreviousData,
     queryFn: () => api.get<SearchResult>(`/api/search?q=${encodeURIComponent(q)}&type=${tab}${deep ? "&remote=always" : ""}`),
   });
-  const recents = useQuery({ queryKey: ["searches"], queryFn: () => api.get<{ query: string }[]>("/api/me/searches"), enabled: !q });
+  const recents = useQuery({ queryKey: ["searches"], queryFn: () => api.get<{ query: string; art_url: string | null }[]>("/api/me/searches"), enabled: !q });
 
   const run = (query: string, nextTab: Tab = tab) => {
     const t = query.trim();
@@ -58,12 +58,12 @@ export default function Search() {
     (document.activeElement as HTMLElement | null)?.blur();
   };
   /** A search is worth remembering once the user does something with a result. */
-  const remember = () => {
+  const remember = (videoId: string) => {
     if (!q || recorded.current === q) return;
     recorded.current = q;
-    api.post("/api/me/searches", { query: q }).then(() => qc.invalidateQueries({ queryKey: ["searches"] })).catch(() => {});
+    api.post("/api/me/searches", { query: q, video_id: videoId }).then(() => qc.invalidateQueries({ queryKey: ["searches"] })).catch(() => {});
   };
-  const play = (t: Track | RemoteTrack) => { remember(); void playSong(t); };
+  const play = (t: Track | RemoteTrack) => { remember(t.video_id); void playSong(t); };
   const local = suggest.data ?? [];
   const titles = new Set(local.filter((s) => s.kind === "track").map((s) => s.label.toLowerCase()));
   const queries = (completions.data ?? []).filter((c) => !titles.has(c.toLowerCase())); // a library song already covers it
@@ -119,7 +119,7 @@ export default function Search() {
           <Section title="Recent searches" action={<button className="link-btn" onClick={() => api.del("/api/me/searches").then(() => qc.invalidateQueries({ queryKey: ["searches"] })).catch((e) => toast(e.message, "error"))}>Clear</button>}>
             <ul className="recents">{recents.data.map((r) => (
               <li key={r.query}>
-                <button onClick={() => run(r.query)}><Icon name="search" size={20} />{r.query}</button>
+                <button onClick={() => run(r.query)}>{r.art_url ? <Cover src={r.art_url} className="recent-art" /> : <Icon name="search" size={20} />}{r.query}</button>
                 <button className="icon-btn" aria-label={`Remove ${r.query}`} onClick={() => api.del(`/api/me/searches?query=${encodeURIComponent(r.query)}`).then(() => qc.invalidateQueries({ queryKey: ["searches"] })).catch(() => {})}><Icon name="close" size={18} /></button>
               </li>
             ))}</ul>

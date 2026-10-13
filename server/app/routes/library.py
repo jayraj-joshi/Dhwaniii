@@ -143,13 +143,22 @@ KEEP_SEARCHES = 50  # stored per profile; the API returns the newest 20
 
 class SearchIn(BaseModel):
     query: str = Field(min_length=1, max_length=200)
+    video_id: str | None = Field(None, pattern=r"^[A-Za-z0-9_-]{11}$")  # the song played from this search (D12)
+
+
+def search_art(video_id: str | None, track_id: int | None) -> str | None:
+    """Our own artwork once the song is in the library, else YouTube's thumbnail."""
+    if track_id:
+        return f"/api/art/track/{track_id}"
+    return f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else None
 
 
 @router.get("/me/searches")
 async def list_searches(request: Request, p=Depends(current_profile)):
     rows = await request.app.state.pool.fetch(
-        "SELECT query, searched_at FROM recent_searches WHERE profile_id = $1 ORDER BY searched_at DESC LIMIT 20", p["id"])
-    return [{"query": r["query"], "searched_at": r["searched_at"]} for r in rows]
+        "SELECT rs.query, rs.searched_at, rs.video_id, s.track_id FROM recent_searches rs "
+        "LEFT JOIN sources s ON s.video_id = rs.video_id WHERE rs.profile_id = $1 ORDER BY rs.searched_at DESC LIMIT 20", p["id"])
+    return [{"query": r["query"], "searched_at": r["searched_at"], "art_url": search_art(r["video_id"], r["track_id"])} for r in rows]
 
 
 @router.post("/me/searches", status_code=204)
@@ -160,8 +169,9 @@ async def add_search(body: SearchIn, request: Request, p=Depends(current_profile
     if not norm:
         raise HTTPException(422, "Nothing to remember")
     async with request.app.state.pool.acquire() as c, c.transaction():
-        await c.execute("INSERT INTO recent_searches (profile_id, query_norm, query) VALUES ($1, $2, $3) "
-                        "ON CONFLICT (profile_id, query_norm) DO UPDATE SET query = $3, searched_at = now()", p["id"], norm, q)
+        await c.execute("INSERT INTO recent_searches (profile_id, query_norm, query, video_id) VALUES ($1, $2, $3, $4) "
+                        "ON CONFLICT (profile_id, query_norm) DO UPDATE SET query = $3, searched_at = now(), "
+                        "video_id = coalesce($4, recent_searches.video_id)", p["id"], norm, q, body.video_id)
         await c.execute("DELETE FROM recent_searches WHERE profile_id = $1 AND query_norm NOT IN "
                         "(SELECT query_norm FROM recent_searches WHERE profile_id = $1 ORDER BY searched_at DESC LIMIT $2)", p["id"], KEEP_SEARCHES)
     return Response(status_code=204)
