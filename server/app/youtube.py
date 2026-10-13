@@ -16,6 +16,7 @@ log = logging.getLogger("resonance.youtube")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")  # D12
 PENALTY_WORDS = {"live", "cover", "remix", "slowed", "reverb", "8d", "karaoke"}
 YTM_TIMEOUT_S = 6
+SUGGEST_TIMEOUT_S = 2  # suggestions are useless once the user has finished typing
 
 _ytm: YTMusic | None = None
 
@@ -120,6 +121,24 @@ async def search(redis, nq: str, merge: bool = False) -> list[dict]:
     if ranked:
         await redis.set(key, json.dumps(ranked), ex=config.SEARCH_CACHE_TTL)
     return ranked
+
+
+def _ytm_suggest(q: str) -> list[str]:
+    return [s for s in _client().get_search_suggestions(q) if isinstance(s, str)]
+
+
+async def suggest_queries(redis, nq: str) -> list[str]:
+    """YouTube Music's autocomplete for the search box, cached like search. [] when it is unreachable (not cached, so it retries)."""
+    key = f"yq:{nq}"
+    if (cached := await redis.get(key)) is not None:
+        return json.loads(cached)
+    try:
+        out = await asyncio.wait_for(asyncio.to_thread(_ytm_suggest, nq), SUGGEST_TIMEOUT_S)
+    except Exception as e:
+        log.warning("ytmusicapi suggestions failed (%s): %s", nq, e)
+        return []
+    await redis.set(key, json.dumps(out), ex=config.SEARCH_CACHE_TTL)
+    return out
 
 
 def remote_json(c: dict, in_library: bool, track_id: int | None) -> dict:

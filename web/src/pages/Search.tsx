@@ -35,9 +35,14 @@ export default function Search() {
   useEffect(() => setDeep(false), [q]);
 
   const typed = useDebounced(text.trim(), 160);
+  const suggesting = focused && typed.length >= 2 && text.trim() !== q;
   const suggest = useQuery({
-    queryKey: ["suggest", typed], enabled: focused && typed.length >= 2 && text.trim() !== q,
+    queryKey: ["suggest", typed], enabled: suggesting,
     queryFn: () => api.get<Suggestion[]>(`/api/suggest?q=${encodeURIComponent(typed)}`), placeholderData: keepPreviousData,
+  });
+  const completions = useQuery({ // YouTube Music's autocomplete: slower, so it fills in under the library matches
+    queryKey: ["suggest-queries", typed], enabled: suggesting, staleTime: Infinity,
+    queryFn: () => api.get<string[]>(`/api/suggest/queries?q=${encodeURIComponent(typed)}`), placeholderData: keepPreviousData,
   });
   const res = useQuery({
     queryKey: ["search", q, tab, deep], enabled: !!q.trim(), placeholderData: keepPreviousData,
@@ -59,7 +64,10 @@ export default function Search() {
     api.post("/api/me/searches", { query: q }).then(() => qc.invalidateQueries({ queryKey: ["searches"] })).catch(() => {});
   };
   const play = (t: Track | RemoteTrack) => { remember(); void playSong(t); };
-  const showSuggestions = focused && text.trim().length >= 2 && text.trim() !== q && (suggest.data?.length ?? 0) > 0;
+  const local = suggest.data ?? [];
+  const titles = new Set(local.filter((s) => s.kind === "track").map((s) => s.label.toLowerCase()));
+  const queries = (completions.data ?? []).filter((c) => !titles.has(c.toLowerCase())); // a library song already covers it
+  const showSuggestions = focused && text.trim().length >= 2 && text.trim() !== q && local.length + queries.length > 0;
   const d = res.data;
 
   const songsBlock = (list: Track[], limit: number) => list.slice(0, limit).map((t) => <TrackRow key={t.id} item={t} onPlay={() => play(t)} />);
@@ -85,13 +93,21 @@ export default function Search() {
 
       {showSuggestions && (
         <ul className="suggest" aria-label="Suggestions">
-          {suggest.data!.map((s) => (
+          {local.map((s) => (
             <li key={`${s.kind}${s.id}`}>
               <button
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => (s.kind === "track" ? run(s.label) : nav(`/${s.kind}/${s.id}`))}>
                 <Icon name={s.kind === "artist" ? "user" : s.kind === "album" ? "library" : "search"} size={20} />
                 <span><span className="row-title">{s.label}</span><span className="row-sub">{s.sublabel}</span></span>
+              </button>
+            </li>
+          ))}
+          {queries.map((c) => (
+            <li key={`q:${c}`}>
+              <button onMouseDown={(e) => e.preventDefault()} onClick={() => run(c)}>
+                <Icon name="search" size={20} />
+                <span><span className="row-title">{c}</span></span>
               </button>
             </li>
           ))}

@@ -123,3 +123,10 @@ async def suggest(request: Request, q: str, p=Depends(current_profile)):
         return []
     rows = await request.app.state.pool.fetch(SUGGEST_SQL, nq, p["id"])
     return [{"kind": r["kind"], "id": r["id"], "label": r["label"], "sublabel": r["sublabel"]} for r in rows]
+
+
+@router.get("/suggest/queries")
+async def suggest_queries(request: Request, q: str, p=Depends(current_profile)):
+    """Search completions from YouTube Music, for songs not in the library yet. A separate call so local suggest stays instant."""
+    nq = normalize_query(q)
+    return (await youtube.suggest_queries(request.app.state.redis, nq))[:6] if len(nq) >= 2 else []

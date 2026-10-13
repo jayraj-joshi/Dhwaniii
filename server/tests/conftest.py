@@ -47,6 +47,7 @@ def client():
         return httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(503, json={"detail": "offline in tests"})))
     mp.setattr(autoplay, "make_client", offline_http)
     mp.setattr(youtube, "_ytm_search", lambda q: [])  # enrichment is a no-op unless a test supplies candidates
+    mp.setattr(youtube, "_ytm_suggest", lambda q: [])
     async def no_warmup():
         pass
     mp.setattr(youtube, "warm_up", no_warmup)

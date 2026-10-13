@@ -39,6 +39,22 @@ def test_miss_returns_youtube_and_marks_in_library(client):
         FAKE_REMOTE.clear()
 
 
+def test_suggest_queries_cached_and_failure_not_cached(client, monkeypatch):
+    from app import youtube
+    h = profile(client)
+    monkeypatch.setattr(youtube, "_ytm_suggest", lambda q: [f"{q} {i}" for i in range(8)])
+    assert client.get("/api/suggest/queries", params={"q": "Qsug One"}, headers=h).json() == [f"qsug one {i}" for i in range(6)]
+    assert client.get("/api/suggest/queries", params={"q": "q"}, headers=h).json() == []
+
+    def down(q):
+        raise RuntimeError("offline")
+    monkeypatch.setattr(youtube, "_ytm_suggest", down)
+    assert len(client.get("/api/suggest/queries", params={"q": "qsug one"}, headers=h).json()) == 6  # served from Redis
+    assert client.get("/api/suggest/queries", params={"q": "qsug two"}, headers=h).json() == []
+    monkeypatch.setattr(youtube, "_ytm_suggest", lambda q: ["back"])
+    assert client.get("/api/suggest/queries", params={"q": "qsug two"}, headers=h).json() == ["back"]  # the failure wasn't cached
+
+
 def test_hit_skips_youtube_unless_always_and_drops_listed_songs(client):
     h = profile(client)
     asyncio.run(_add_source("known000002"))
