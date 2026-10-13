@@ -51,7 +51,8 @@ export interface PlaylistDetail extends PlaylistSummary {
 export interface ArtistSummary { id: number; name: string; art_url: string }
 export interface AlbumSummary { id: number; title: string; artist: { id: number; name: string } | null; year: number | null; art_url: string }
 
-export interface Prefs { theme?: "system" | "light" | "dark"; autoplay?: boolean }
+export type AutoplayMethod = "gemini" | "tavily";
+export interface Prefs { theme?: "system" | "light" | "dark"; autoplay?: boolean; autoplay_method?: AutoplayMethod }
 export interface Profile { id: number; name: string; avatar: string; prefs: Prefs }
 
 export interface RecentContext { context: string; kind: string; id: number | null; name: string; art_url: string | null; last_played: string | null }
@@ -86,7 +87,7 @@ export interface AlbumPage {
 }
 
 export interface LibraryData { liked_count: number; playlists: PlaylistSummary[]; artists: ArtistSummary[]; albums: AlbumSummary[] }
-export interface SettingsData { codec: string; storage_limit_bytes: number; storage_used_bytes: number; file_count: number }
+export interface SettingsData { codec: string; storage_limit_bytes: number; storage_used_bytes: number; file_count: number; autoplay_methods: AutoplayMethod[] }
 export interface DeviceInfo { id: string; name: string; online: boolean; active: boolean; last_seen: string }
 
 export interface Ctx { type: "playlist" | "album" | "artist" | "radio" | "liked" | "search" | "queue"; id: string; name: string }

@@ -72,5 +72,5 @@ async def patch_me(body: MePatch, request: Request, p=Depends(current_profile)):
 async def settings(request: Request, p=Depends(current_profile)):
     """Server-wide and read-only (D37): the codec is chosen in .env, the storage budget is STORAGE_LIMIT_GB."""
     pool = request.app.state.pool
-    return {"codec": config.PREF_CODEC, "storage_limit_bytes": int(config.STORAGE_LIMIT_GB * storage.GB),
+    return {"codec": config.PREF_CODEC, "storage_limit_bytes": int(config.STORAGE_LIMIT_GB * storage.GB), "autoplay_methods": config.autoplay_methods(),
             "storage_used_bytes": int(await storage.storage_used(pool)), "file_count": await pool.fetchval("SELECT count(*) FROM files")}

@@ -1,7 +1,8 @@
 """Autoplay (D51): more songs for a radio-style list, found from web recommendations.
 
-Flow: the song that is playing (from the second batch on: three random songs of the previous batch) -> ONE Tavily web search
-"<title> <artist>, ... similar songs" -> an LLM reads the results and lists titles
+Flow: the song that is playing (from the second batch on: three random songs of the previous batch) -> the profile's method lists titles:
+  tavily: ONE Tavily web search "<title> <artist>, ... similar songs" -> an LLM (NVIDIA) reads the results
+  gemini: ONE Gemini call that names similar songs from what the model knows (no web search)
 -> each title is resolved to a YouTube Music song -> the songs are saved as tracks and published to the profile as `autoplay_tracks`.
 Every failure ends the same way (an empty event, no exception, no retry), so a missing key or an outage never spends credits twice.
 """
@@ -21,6 +22,7 @@ from .ws import publish_profile
 log = logging.getLogger("resonance.autoplay")
 TAVILY_URL = "https://api.tavily.com/search"
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 TITLES_TTL = 7 * 24 * 3600
 MAX_TITLES = 10
 MAX_DURATION_MS = 10 * 60 * 1000
@@ -28,10 +30,6 @@ PARALLEL = 4
 HISTORY_EXCLUDE = 50
 EXAMPLES = 3          # songs of the previous batch that go into the query, so the search sees more than one example
 BATCH_TTL = 6 * 3600  # how long the id list of the last published batch is remembered
-
-
-def enabled() -> bool:
-    return bool(config.TAVILY_API_KEY and config.NVIDIA_API_KEY)
 
 
 def make_client() -> httpx.AsyncClient:
@@ -68,6 +66,29 @@ async def llm(client: httpx.AsyncClient, prompt: str) -> str:
     return r.json()["choices"][0]["message"].get("content") or ""
 
 
+def gemini_prompt(examples: list[tuple[int, str, str]]) -> str:
+    songs = [f'"{t}" by {a}' for _, t, a in examples]
+    q = songs[0] if len(songs) == 1 else ", ".join(songs[:-1]) + f" and {songs[-1]}"
+    skip = "that song itself" if len(examples) == 1 else "any of those songs themselves"
+    return (f"List up to {MAX_TITLES} real, released songs that a listener who likes {q} would enjoy next: similar in language, mood "
+            f"and style, by a mix of artists. Do not include {skip}. Write each as \"Title - Artist\", no numbering. "
+            f'Reply with only a JSON array of strings, like ["Title 1 - Artist 1", "Title 2 - Artist 2"].')
+
+
+async def gemini(client: httpx.AsyncClient, prompt: str) -> str:
+    """GEMINI_MODEL may list several models, newest first: a busy one (503 high demand, 429 quota) hands over to the next."""
+    for model in [m.strip() for m in config.GEMINI_MODEL.split(",") if m.strip()]:
+        r = await client.post(GEMINI_URL.format(model=model), timeout=30, headers={"x-goog-api-key": config.GEMINI_API_KEY},
+                              json={"contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                                    "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": 2048}})  # thinking tokens count too
+        if r.status_code not in (429, 503):
+            break
+        log.info("gemini model %s is busy (%s), trying the next", model, r.status_code)
+    r.raise_for_status()
+    parts = (r.json().get("candidates") or [{}])[0].get("content", {}).get("parts") or []
+    return "".join(p.get("text", "") for p in parts if not p.get("thought"))
+
+
 def parse_titles(reply: str, drop: list[str] | str) -> list[str]:
     """Song titles from the model's reply: a JSON array (possibly fenced or surrounded by prose), else the quoted strings, which
     still works when the reply was cut off at the token limit. The example songs themselves (and anything containing their titles) are dropped."""
@@ -93,15 +114,19 @@ def sample(population: list[int], k: int) -> list[int]:
     return random.sample(population, k)  # a function of its own so tests can make the choice deterministic
 
 
-async def titles_for(redis, examples: list[tuple[int, str, str]], also_drop: list[str]) -> list[str]:
-    """Recommended titles for the example songs [(track_id, title, artist), ...]: ONE Tavily search and ONE model call, however many examples."""
-    key = "ap:titles:" + "+".join(str(i) for i in sorted(e[0] for e in examples))
+async def titles_for(redis, examples: list[tuple[int, str, str]], also_drop: list[str], method: str = "tavily") -> list[str]:
+    """Recommended titles for the example songs [(track_id, title, artist), ...]: one search and/or one model call, however many examples."""
+    ids = "+".join(str(i) for i in sorted(e[0] for e in examples))
+    key = f"ap:titles:{ids}" if method == "tavily" else f"ap:titles:{method}:{ids}"  # each method keeps its own answers
     if hit := await redis.get(key):
         return json.loads(hit)
     names = [e[1] for e in examples]
     async with make_client() as c:
-        results = await tavily(c, ", ".join(f"{t} {a}" for _, t, a in examples) + " similar songs")
-        titles = parse_titles(await llm(c, build_prompt(names, results)), names + also_drop)
+        if method == "gemini":
+            reply = await gemini(c, gemini_prompt(examples))
+        else:
+            reply = await llm(c, build_prompt(names, await tavily(c, ", ".join(f"{t} {a}" for _, t, a in examples) + " similar songs")))
+        titles = parse_titles(reply, names + also_drop)
     if titles:  # an empty answer is never cached: the next try may do better
         await redis.set(key, json.dumps(titles), ex=TITLES_TTL)
     return titles
@@ -160,14 +185,15 @@ async def resolve(pool, redis, titles: list[str], exclude: set[int]) -> tuple[li
     return ids, {"titles": len(titles), "resolved": sum(1 for c in found if c), "kept": len(ids)}
 
 
-async def autoplay_extend(ctx, profile_id: int, context_key: str, after_len: int, seed_track_id: int, exclude_track_ids: list[int]):
+async def autoplay_extend(ctx, profile_id: int, context_key: str, after_len: int, seed_track_id: int, exclude_track_ids: list[int],
+                          method: str = "tavily"):
     """arq job. Always ends by publishing `autoplay_tracks` to the profile, empty on any failure, so the client can stop waiting."""
     pool, redis = ctx["pool"], ctx["redis"]
     ctype, _, cid = context_key.partition(":")
     tracks, stats = [], {}
     try:
-        if not enabled():
-            raise RuntimeError("TAVILY_API_KEY / NVIDIA_API_KEY are not set")
+        if method not in config.autoplay_methods():
+            raise RuntimeError(f"autoplay method {method!r} has no API key set")
         seed = await pool.fetchrow("SELECT t.title, a.name AS artist FROM tracks t JOIN artists a ON a.id = t.primary_artist_id WHERE t.id = $1", seed_track_id)
         if seed is None:
             raise LookupError(f"seed track {seed_track_id} is gone")
@@ -176,9 +202,9 @@ async def autoplay_extend(ctx, profile_id: int, context_key: str, after_len: int
             rows = {r["id"]: r for r in await pool.fetch("SELECT t.id, t.title, a.name AS artist FROM tracks t JOIN artists a ON a.id = t.primary_artist_id WHERE t.id = ANY($1::bigint[])", prev)}
             picked = [rows[i] for i in sample(prev, min(EXAMPLES, len(prev))) if i in rows]
             examples = [(r["id"], r["title"], r["artist"]) for r in picked] or examples
-        titles = await titles_for(redis, examples, [seed["title"]])
+        titles = await titles_for(redis, examples, [seed["title"]], method)
         ids, stats = await resolve(pool, redis, titles, {*exclude_track_ids, seed_track_id, *(e[0] for e in examples)})
-        stats["examples"] = [e[0] for e in examples]
+        stats["examples"], stats["method"] = [e[0] for e in examples], method
         await remember_batch(redis, profile_id, ctype, cid, seed_track_id, after_len, ids)
         tracks = await get_tracks(pool, profile_id, ids)
     except Exception as e:  # no re-raise: arq would retry and spend credits again

@@ -170,7 +170,7 @@ async def evict(ctx):
 
 class Settings:
     functions = [download_track, update_ytdlp, func(importer.run_import, name="run_import", timeout=3600, max_tries=1),  # a retry would add every track twice
-                 func(autoplay.autoplay_extend, name="autoplay_extend", timeout=150, max_tries=1)]  # a retry would spend Tavily/LLM credits again
+                 func(autoplay.autoplay_extend, name="autoplay_extend", timeout=150, max_tries=1)]  # a retry would spend Tavily/LLM/Gemini credits again
     cron_jobs = [cron(feed_backlog, second={0, 30}), cron(evict, minute=0, second=0)]
     on_startup = startup
     on_shutdown = shutdown

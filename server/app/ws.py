@@ -114,7 +114,7 @@ async def maybe_autoplay(app, profile_id: int, state: dict) -> None:
     """D51: when the last item of a list is playing, ask the worker for more songs. Runs on every stored queue_update / player_state,
     so most calls must return at once. arq's job id dedupes while a job is queued or running; the Redis gate covers the time after it."""
     try:
-        if not (config.TAVILY_API_KEY and config.NVIDIA_API_KEY):
+        if not config.autoplay_methods():
             return
         order, tracks, cur, ctx = state.get("order"), state.get("context_tracks"), state.get("current") or {}, state.get("context") or {}
         if not (state.get("playing") is True and isinstance(order, list) and isinstance(tracks, list) and order and cur.get("from") == "context"
@@ -133,7 +133,8 @@ async def maybe_autoplay(app, profile_id: int, state: dict) -> None:
         recent = [r["track_id"] for r in await pool.fetch(
             "SELECT track_id FROM play_history WHERE profile_id = $1 GROUP BY track_id ORDER BY max(played_at) DESC LIMIT 50", profile_id)]
         exclude = sorted({t for t in tracks if isinstance(t, int)} | set(recent))
-        await app.state.arq.enqueue_job("autoplay_extend", profile_id, f"{ctype}:{cid}", len(tracks), cur["track_id"], exclude, _job_id=job_id)
+        await app.state.arq.enqueue_job("autoplay_extend", profile_id, f"{ctype}:{cid}", len(tracks), cur["track_id"], exclude,
+                                        method=config.autoplay_method(prefs), _job_id=job_id)
     except Exception:
         log.exception("autoplay trigger failed")  # never let this break the socket loop
 

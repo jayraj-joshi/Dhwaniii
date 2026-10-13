@@ -10,9 +10,13 @@ import { applyTheme } from "../lib/theme";
 import { toast } from "../lib/toast";
 import { resetPlayer, usePlayer } from "../player/engine";
 import { AVATAR_NAMES, Avatar, ErrorBox, Spinner, useMe } from "../components/Common";
-import type { Prefs, SettingsData } from "../types";
+import type { AutoplayMethod, Prefs, SettingsData } from "../types";
 
 const THEMES = [["system", "System"], ["light", "Light"], ["dark", "Dark"]] as const;
+const AUTOPLAY_METHODS: Record<AutoplayMethod, [string, string]> = {
+  gemini: ["Gemini", "Google's Gemini picks similar songs from what it knows. Fast."],
+  tavily: ["Web search", "Searches the web for songs people recommend, then an AI model reads the results."],
+};
 
 export default function Settings() {
   const me = useMe();
@@ -36,6 +40,8 @@ export default function Settings() {
   };
   const setPref = (p: Prefs) => { void save({ prefs: p }); };
   const used = storage.data ? storage.data.storage_used_bytes / storage.data.storage_limit_bytes : 0;
+  const methods = storage.data?.autoplay_methods ?? [];
+  const method = prefs.autoplay_method && methods.includes(prefs.autoplay_method) ? prefs.autoplay_method : methods[0]; // as the server picks it
 
   return (
     <div className="page settings">
@@ -77,6 +83,18 @@ export default function Settings() {
           <span><span className="row-title">Autoplay</span><span className="row-sub">When a list ends, keep going with songs like the last one.</span></span>
           <input type="checkbox" role="switch" checked={prefs.autoplay !== false} onChange={(e) => { usePlayer.setState({ autoplay: e.target.checked }); setPref({ autoplay: e.target.checked }); }} />
         </label>
+        {prefs.autoplay !== false && methods.length > 1 && method && (
+          <>
+            <div className="segmented" role="radiogroup" aria-label="How autoplay finds songs">
+              {methods.map((id) => (
+                <label key={id} className={method === id ? "on" : ""}>
+                  <input type="radio" name="autoplay-method" checked={method === id} onChange={() => setPref({ autoplay_method: id })} />{AUTOPLAY_METHODS[id][0]}
+                </label>
+              ))}
+            </div>
+            <p className="muted">{AUTOPLAY_METHODS[method][1]}</p>
+          </>
+        )}
       </section>
 
       <section className="group" aria-labelledby="s-device">

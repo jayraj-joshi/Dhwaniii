@@ -8,6 +8,7 @@ import pytest
 from arq.jobs import Job
 
 from app import autoplay, config, worker, youtube
+from app.text import normalize_query
 from tests.helpers import mk_track, prof, run
 from tests.test_worker import drain, with_ctx
 from tests.test_ws import conn, quiet, until
@@ -17,6 +18,7 @@ from tests.test_ws import conn, quiet, until
 def keys(monkeypatch):
     monkeypatch.setattr(config, "TAVILY_API_KEY", "tvly-test-key")
     monkeypatch.setattr(config, "NVIDIA_API_KEY", "nv-test-key")
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "")  # a real key in .env must never be used here; the Gemini tests set a fake one
 
 
 # ------------------------------------------------------------------ the trigger
@@ -39,6 +41,12 @@ def job_args(client, job_id):
     async def info():
         return await Job(job_id, client.app.state.arq).info()
     return client.portal.call(info).args
+
+
+def job_kwargs(client, job_id):
+    async def info():
+        return await Job(job_id, client.app.state.arq).info()
+    return client.portal.call(info).kwargs
 
 
 def new_profile(client):
@@ -228,12 +236,12 @@ def vid(tag):
     return ("a" + tag + uuid.uuid4().hex)[:11]
 
 
-async def run_job(pid, context_key, after_len, seed, exclude):
+async def run_job(pid, context_key, after_len, seed, exclude, method="tavily"):
     async def go(ctx):
         ps = ctx["redis"].pubsub()
         await ps.subscribe(f"ws:profile:{pid}")
         await ps.get_message(timeout=1)
-        res = await autoplay.autoplay_extend(ctx, pid, context_key, after_len, seed, exclude)
+        res = await autoplay.autoplay_extend(ctx, pid, context_key, after_len, seed, exclude, method=method)
         return res, await drain(ps)
     return await with_ctx(go)
 
@@ -267,8 +275,8 @@ def test_job_end_to_end_order_filters_and_event(client, monkeypatch):
     e = events[0]
     assert e["context"] == {"type": "radio", "id": str(seed["id"])} and e["after_len"] == 1 and e["seed_track_id"] == seed["id"]
     assert [t["title"] for t in e["tracks"]] == ["Locha-E-Ulfat", "Hookah Bar", "Dilbar", "Kala Chashma"]          # the model's order, filters applied
-    assert all(t["id"] and t["video_id"] and t["cache_state"] == "remote" for t in e["tracks"]) and e["stats"] == {"titles": 9, "resolved": 7, "kept": 4, "examples": [seed["id"]]}
-    assert res == {"tracks": 4, "titles": 9, "resolved": 7, "kept": 4, "examples": [seed["id"]]}
+    assert all(t["id"] and t["video_id"] and t["cache_state"] == "remote" for t in e["tracks"]) and e["stats"] == {"titles": 9, "resolved": 7, "kept": 4, "examples": [seed["id"]], "method": "tavily"}
+    assert res == {"tracks": 4, "titles": 9, "resolved": 7, "kept": 4, "examples": [seed["id"]], "method": "tavily"}
     assert run(lambda c: c.fetchval("SELECT count(*) FROM sources WHERE video_id = ANY($1)", [v["a"], v["b"], v["d"], v["e"]])) == 4   # saved as provisional tracks
     assert run(lambda c: c.fetchval("SELECT count(*) FROM sources WHERE video_id = $1", v["c"])) == 0                                 # the long one was never saved
     # what was sent to Tavily and the model
@@ -460,3 +468,75 @@ def test_the_same_examples_are_served_from_the_cache_and_a_deleted_example_is_sk
 
 def batch_key_for(pid, seed_id):
     return autoplay.batch_key(pid, "radio", str(seed_id))
+
+
+# ------------------------------------------------------------------ the Gemini method and choosing a method
+
+def stub_gemini(monkeypatch, reply, status=200, busy=()):
+    seen = []
+    def handler(req):
+        assert req.url.host == "generativelanguage.googleapis.com"   # no Tavily or NVIDIA call on this path
+        seen.append((req.url.path, req.headers["x-goog-api-key"], json.loads(req.content)))
+        if any(f"/{m}:" in req.url.path for m in busy):
+            return httpx.Response(503, json={"error": {"code": 503, "message": "This model is currently experiencing high demand."}})
+        parts = [{"text": '["Thought Song - Nobody"]', "thought": True}, {"text": reply}]
+        return httpx.Response(status, json={"candidates": [{"content": {"role": "model", "parts": parts}}]} if status == 200 else {"error": {"code": status}})
+    monkeypatch.setattr(autoplay, "make_client", lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    return seen
+
+
+def test_gemini_job_asks_the_model_alone_and_caches_per_method(client, monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "gm-test-key")
+    monkeypatch.setattr(config, "GEMINI_MODEL", "gemini-test-lite")
+    h, pid, _ = new_profile(client)
+    seed = seed_track(client, h, title="Gemini Seed Song", artist="Seed Singer")
+    a, b = vid("ga"), vid("gb")
+    stub_search(monkeypatch, {normalize_query("Locha-E-Ulfat - Amit Trivedi"): [cand(a, "Locha-E-Ulfat")],
+                              normalize_query("Hookah Bar - Himesh Reshammiya"): [cand(b, "Hookah Bar")]})
+    seen = stub_gemini(monkeypatch, json.dumps(["Locha-E-Ulfat - Amit Trivedi", "Gemini Seed Song - Seed Singer", "Hookah Bar - Himesh Reshammiya"]))
+    res, ev = asyncio.run(run_job(pid, f"radio:{seed['id']}", 1, seed["id"], [], method="gemini"))
+    assert [t["title"] for t in ev[0]["tracks"]] == ["Locha-E-Ulfat", "Hookah Bar"]          # the seed itself and the thought part are dropped
+    assert res["method"] == ev[0]["stats"]["method"] == "gemini"
+    (path, key, body), = seen
+    assert path == "/v1beta/models/gemini-test-lite:generateContent" and key == "gm-test-key" and "tools" not in body
+    prompt = body["contents"][0]["parts"][0]["text"]
+    assert '"Gemini Seed Song" by Seed Singer' in prompt and "JSON array of strings" in prompt
+    redis = client.app.state.redis
+    assert client.portal.call(redis.exists, f"ap:titles:gemini:{seed['id']}") == 1 and client.portal.call(redis.exists, f"ap:titles:{seed['id']}") == 0
+    asyncio.run(run_job(pid, f"radio:{seed['id']}", 1, seed["id"], [], method="gemini"))
+    assert len(seen) == 1                                                                     # served from the cache
+    other = seed_track(client, h, title="Gemini Busy Song")
+    monkeypatch.setattr(config, "GEMINI_MODEL", "new-lite, old-lite")                          # the newest is busy: the next one answers
+    seen = stub_gemini(monkeypatch, json.dumps(["Hookah Bar - Himesh Reshammiya"]), busy=["new-lite"])
+    _, ev = asyncio.run(run_job(pid, f"radio:{other['id']}", 1, other["id"], [], method="gemini"))
+    assert [p for p, _, _ in seen] == ["/v1beta/models/new-lite:generateContent", "/v1beta/models/old-lite:generateContent"]
+    assert [t["title"] for t in ev[0]["tracks"]] == ["Hookah Bar"]
+    third = seed_track(client, h, title="Gemini All Busy Song")
+    stub_gemini(monkeypatch, "[]", busy=["new-lite", "old-lite"])                                # every model busy: an empty event, no exception
+    _, ev = asyncio.run(run_job(pid, f"radio:{third['id']}", 1, third["id"], [], method="gemini"))
+    assert ev[0]["tracks"] == []
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "")                                          # a method without its key never calls out
+    seen = stub_gemini(monkeypatch, "[]")
+    asyncio.run(run_job(pid, f"radio:{other['id']}", 1, other["id"], [], method="gemini"))
+    assert seen == []
+
+
+def test_the_profile_picks_the_method_and_settings_lists_the_configured_ones(client, monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "gm-test-key")
+    assert config.autoplay_methods() == ["gemini", "tavily"]
+    assert [config.autoplay_method(p) for p in ({}, {"autoplay_method": "tavily"}, {"autoplay_method": "bogus"})] == ["gemini", "tavily", "gemini"]
+    h, pid, dev = new_profile(client)
+    assert client.get("/api/settings", headers=h).json()["autoplay_methods"] == ["gemini", "tavily"]
+    with conn(client, pid, dev) as ws:
+        until(ws, "state")
+        ws.send_json({"type": "queue_update", "state": state("radio", "m1", [1, 2], 1)})
+        quiet(ws)
+        client.patch("/api/me", json={"prefs": {"autoplay_method": "tavily"}}, headers=h)
+        ws.send_json({"type": "queue_update", "state": state("radio", "m2", [1, 2], 1)})
+        quiet(ws)
+    assert job_kwargs(client, jid(pid, "radio", "m1", 2)) == {"method": "gemini"}            # the default
+    assert job_kwargs(client, jid(pid, "radio", "m2", 2)) == {"method": "tavily"}            # the profile's choice
+    monkeypatch.setattr(config, "TAVILY_API_KEY", "")
+    assert config.autoplay_method({"autoplay_method": "tavily"}) == "gemini"                 # a choice whose keys are gone falls back
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "")
+    assert config.autoplay_methods() == [] and config.autoplay_method({}) is None
