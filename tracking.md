@@ -211,7 +211,11 @@ The search box's suggestions only matched the local library, so a small library 
 
 ## Recent search artwork (2026-10-13)
 
-Recent searches show the artwork of the song played from that search instead of a search icon. Migration `006_recent_search_art.sql` adds a nullable `recent_searches.video_id`; `POST /api/me/searches` takes an optional `video_id` (validated, D12) and keeps the old one when it's left out; `GET` returns `art_url` (library art via `sources`, else the `i.ytimg.com` thumbnail, else null, and the client falls back to the icon). Test `test_recent_search_art` in `server/tests/test_library.py`. Frontend typecheck and vitest pass.
+Recent searches show the artwork of the song played from that search instead of a search icon. Migration `006_recent_search_art.sql` adds a nullable `recent_searches.video_id`; `POST /api/me/searches` takes an optional `video_id` (validated, D12) and keeps the old one when it's left out; `GET` returns `art_url`: the track's `/api/art/track/{id}` when it has `artwork_path`, else the `i.ytimg.com` thumbnail of its video, else null (the client falls back to the icon). Searches with no recorded song (all older rows) use the library's top song match for the query when it scores at least `SEARCH_HIT_THRESHOLD`. Test `test_recent_search_art` in `server/tests/test_library.py`. Frontend typecheck and vitest pass.
+
+## Autoplay method choice: Gemini (2026-10-13)
+
+Autoplay can now find songs with Gemini as well as Tavily + NVIDIA; each profile picks in Settings → Playback (shown when both are configured), stored as `prefs.autoplay_method`. The `gemini` method is one plain `generateContent` call (no web search, at the user's request) asking for up to 10 `"Title - Artist"` picks; the rest of the pipeline is shared. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite,gemini-3.1-flash-lite`: during testing 3.5 Flash-Lite answered 503 "high demand" on every try, so a 503/429 falls through to the next model. `GET /api/settings` gained `autoplay_methods`. Tests in `server/tests/test_autoplay.py` (request shape, thought parts ignored, per-method cache key, busy-model fallback, all-busy = empty event, missing key = no call, method chosen from prefs with fallback); the autoplay test fixture blanks `GEMINI_API_KEY` so a real key in `.env` is never used. Live check: 3.5 returned 503, 3.1 returned 10 sensible picks for "Tum Hi Ho" (about 27 s in total, most of it waiting on the busy 3.5).
 
 ## Next steps
 
