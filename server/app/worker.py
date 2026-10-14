@@ -3,8 +3,12 @@ import asyncio
 import logging
 import os
 import random
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 
+import httpx
 import yt_dlp
 from arq import Retry, cron, func
 from arq.connections import RedisSettings
@@ -46,6 +50,29 @@ def _download(video_id: str, on_progress) -> dict:
         retries=5, fragment_retries=5, concurrent_fragment_downloads=4)
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+
+
+async def _download_rapidapi(redis, video_id: str) -> dict:
+    """The fallback for _download: RapidAPI's MP3 re-encoded to PREF_CODEC at the same path, plus YouTube's thumbnail."""
+    mp3 = await youtube.rapidapi_mp3(redis, video_id)
+    audio = storage.abs_path(storage.audio_rel(video_id, config.PREF_CODEC))
+    audio.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "a.mp3"
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as http:
+            async with http.stream("GET", mp3["link"]) as r:
+                r.raise_for_status()
+                with src.open("wb") as f:
+                    async for chunk in r.aiter_bytes():
+                        f.write(chunk)
+            for size in ("maxresdefault", "hqdefault"):  # hqdefault is letterboxed, so only when there is no maxres
+                r = await http.get(f"https://i.ytimg.com/vi/{video_id}/{size}.jpg")
+                if r.status_code == 200:
+                    audio.with_suffix(".jpg").write_bytes(r.content)
+                    break
+        codec = ["-c:a", "copy"] if config.PREF_CODEC == "mp3" else ["-c:a", "aac", "-b:a", "192k"]
+        await asyncio.to_thread(subprocess.run, ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-vn", *codec, str(audio)], check=True)
+    return {"title": mp3["title"], "duration": mp3["duration"]}
 
 
 def _is_permanent(msg: str) -> bool:
@@ -134,7 +161,16 @@ async def download_track(ctx, video_id: str):
     progress = lambda pct: asyncio.run_coroutine_threadsafe(
         publish_all(redis, {"type": "download_progress", "video_id": video_id, "percent": pct}), loop)
     try:
-        info = await asyncio.to_thread(_download, video_id, progress)
+        try:
+            info = await asyncio.to_thread(_download, video_id, progress)
+        except Exception as e:
+            if not config.RAPIDAPI_KEY or _is_permanent(str(e)):
+                raise
+            log.warning("yt-dlp failed for %s, trying RapidAPI: %s", video_id, str(e)[:200])
+            try:
+                info = await _download_rapidapi(redis, video_id)
+            except Exception as e2:
+                raise RuntimeError(f"RapidAPI fallback failed ({str(e2)[:150]}) after yt-dlp: {e}") from e2
         track_id = await _finish(ctx, video_id, info)
     except Exception as e:
         return await _fail(ctx, video_id, e, ctx.get("job_try", 1))

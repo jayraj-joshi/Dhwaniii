@@ -151,6 +151,37 @@ def test_unavailable_video_is_404(client, monkeypatch):
     assert client.get(f"/api/stream/{vid()}", headers=profile(client)).status_code == 404
 
 
+def test_resolve_falls_back_to_rapidapi_but_not_for_unavailable(client, monkeypatch):
+    import redis.asyncio as aioredis
+    rapid_calls = []
+
+    def ytdlp(video_id):
+        if video_id.startswith("gone"):
+            raise youtube.Unavailable("Private video")
+        raise RuntimeError("Sign in to confirm you're not a bot")
+
+    async def rapid(redis, video_id):
+        rapid_calls.append(video_id)
+        return {"link": f"https://cdn.example/{video_id}.mp3", "title": "T", "duration": 3.0}
+    monkeypatch.setattr(youtube, "_resolve", ytdlp)
+    monkeypatch.setattr(youtube, "rapidapi_mp3", rapid)
+    monkeypatch.setattr(config, "RAPIDAPI_KEY", "k")
+    v, gone = vid(), "gone" + uuid.uuid4().hex[:7]
+
+    async def go():
+        r = aioredis.from_url(config.REDIS_URL)
+        try:
+            info = await youtube.resolve_audio_url(r, v)
+            with pytest.raises(youtube.Unavailable):
+                await youtube.resolve_audio_url(r, gone)
+            return info, await r.exists(f"su:{v}")
+        finally:
+            await r.aclose()
+    info, cached = asyncio.run(go())
+    assert info == {"url": f"https://cdn.example/{v}.mp3", "http_headers": {}, "mime": "audio/mpeg"} and cached
+    assert rapid_calls == [v]
+
+
 def test_cache_endpoint_priorities(client):
     h, v = profile(client), vid()
     rd = client.app.state.redis

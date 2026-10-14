@@ -6,6 +6,7 @@ import math
 import os
 import re
 
+import httpx
 import yt_dlp
 from ytmusicapi import YTMusic
 
@@ -183,7 +184,15 @@ def _resolve(video_id: str) -> dict:
 
 
 async def _resolve_and_cache(redis, video_id: str) -> dict:
-    info = await asyncio.to_thread(_resolve, video_id)
+    try:
+        info = await asyncio.to_thread(_resolve, video_id)
+    except Unavailable:
+        raise
+    except Exception as e:
+        if not config.RAPIDAPI_KEY:
+            raise
+        log.warning("yt-dlp could not resolve %s, trying RapidAPI: %s", video_id, str(e)[:200])
+        info = {"url": (await rapidapi_mp3(redis, video_id))["link"], "http_headers": {}, "mime": "audio/mpeg"}
     await redis.set(f"su:{video_id}", json.dumps(info), ex=config.STREAM_URL_TTL)
     return info
 
@@ -197,6 +206,32 @@ async def resolve_audio_url(redis, video_id: str, fresh: bool = False) -> dict:
         task = _resolving[video_id] = asyncio.create_task(_resolve_and_cache(redis, video_id))
         task.add_done_callback(lambda _: _resolving.pop(video_id, None))
     return await asyncio.shield(task)
+
+
+# --- RapidAPI fallback when yt-dlp is blocked ---------------------------------------
+
+RAPIDAPI_HOST = "youtube-mp36.p.rapidapi.com"
+
+
+async def rapidapi_mp3(redis, video_id: str, polls: int = 10, wait_s: float = 3) -> dict:
+    """{link, title, duration} of the MP3 RapidAPI made, cached in Redis as ra:<video_id> so playing live and then
+    downloading costs one call (the free plan allows 300 a month). The link expires after about two hours."""
+    if cached := await redis.get(f"ra:{video_id}"):
+        return json.loads(cached)
+    headers = {"x-rapidapi-host": RAPIDAPI_HOST, "x-rapidapi-key": config.RAPIDAPI_KEY}
+    async with httpx.AsyncClient(timeout=30) as http:
+        for _ in range(polls):  # a video nobody has asked for yet comes back "processing" first
+            r = await http.get(f"https://{RAPIDAPI_HOST}/dl", params={"id": video_id}, headers=headers)
+            r.raise_for_status()
+            d = r.json()
+            if d.get("status") == "ok" and d.get("link"):
+                out = {"link": d["link"], "title": d.get("title"), "duration": d.get("duration")}
+                await redis.set(f"ra:{video_id}", json.dumps(out), ex=3600)
+                return out
+            if d.get("status") != "processing":
+                raise RuntimeError(f"RapidAPI: {d.get('msg') or d}")
+            await asyncio.sleep(wait_s)
+    raise RuntimeError(f"RapidAPI: still converting {video_id}")
 
 
 async def warm_up() -> None:

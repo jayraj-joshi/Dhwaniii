@@ -31,6 +31,7 @@ def client():
     mp.setattr(config, "DATABASE_URL", _url(TEST_DB))
     mp.setattr(config, "CORS_ORIGINS", ["https://app.example.com"])
     mp.setattr(config, "REDIS_URL",config.REDIS_URL.rsplit("/", 1)[0] + "/9")
+    mp.setattr(config, "RAPIDAPI_KEY", "")  # tests that want the fallback set a fake key and fake its network
     from app import youtube
     async def no_network(redis, nq, merge=False):
         return list(FAKE_REMOTE)

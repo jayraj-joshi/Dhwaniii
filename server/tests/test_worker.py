@@ -6,12 +6,13 @@ import subprocess
 import uuid
 
 import asyncpg
+import httpx
 import pytest
 from arq import Retry, create_pool
 from arq.connections import RedisSettings
 from mutagen.mp4 import MP4
 
-from app import config, db, storage, worker
+from app import config, db, storage, worker, youtube
 from tests.conftest import TEST_DB, _url
 
 
@@ -177,6 +178,78 @@ def test_transient_error_backoff_then_final_failure(client, env, monkeypatch):
     asyncio.run(with_ctx(lambda ctx: worker.download_track(ctx, v), job_try=4))  # 4th attempt = last (DOWNLOAD_RETRIES + 1)
     job = run(lambda c: c.fetchrow("SELECT status, attempts, error FROM download_jobs WHERE video_id = $1", v))
     assert (job["status"], job["attempts"]) == ("failed", 4) and "503" in job["error"]
+
+
+BOT = "ERROR: [youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication."
+
+
+def test_rapidapi_fallback_when_ytdlp_is_blocked(client, env, monkeypatch, media):
+    _, _, root = env
+    monkeypatch.setattr(config, "RAPIDAPI_KEY", "k")
+    monkeypatch.setattr(worker, "_download", boom(BOT))
+    used = []
+
+    async def _rapid(redis, video_id):
+        used.append(video_id)
+        a = storage.abs_path(storage.audio_rel(video_id, "m4a"))
+        a.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(media / "a.m4a", a)
+        shutil.copy(media / "t.jpg", a.with_suffix(".jpg"))
+        return {"title": "Coldplay - Yellow (Official Video)", "duration": 3.0}
+    monkeypatch.setattr(worker, "_download_rapidapi", _rapid)
+    v = vid()
+    asyncio.run(with_ctx(lambda ctx: worker.download_track(ctx, v)))  # no Retry: the fallback made the file
+    assert used == [v]
+    assert run(lambda c: c.fetchval("SELECT status FROM download_jobs WHERE video_id = $1", v)) == "done"
+    assert (root / f"art/track/{v}.jpg").exists()
+
+
+@pytest.mark.parametrize("key,msg", [("k", "ERROR: [youtube] x: Private video. Sign in if you've been granted access"), ("", BOT)])
+def test_rapidapi_fallback_skipped(client, env, monkeypatch, key, msg):
+    """Not for a video that is gone for good, and not without a key."""
+    monkeypatch.setattr(config, "RAPIDAPI_KEY", key)
+    monkeypatch.setattr(worker, "_download", boom(msg))
+    used = []
+    monkeypatch.setattr(worker, "_download_rapidapi", lambda redis, v: used.append(v))
+    try:
+        asyncio.run(with_ctx(lambda ctx: worker.download_track(ctx, vid())))
+    except Retry:
+        pass
+    assert used == []
+
+
+def test_rapidapi_fallback_failure_keeps_both_errors(client, env, monkeypatch):
+    monkeypatch.setattr(config, "RAPIDAPI_KEY", "k")
+    monkeypatch.setattr(worker, "_download", boom(BOT))
+
+    async def _rapid(redis, video_id):
+        raise RuntimeError("RapidAPI: quota exceeded")
+    monkeypatch.setattr(worker, "_download_rapidapi", _rapid)
+    v = vid()
+    with pytest.raises(Retry):
+        asyncio.run(with_ctx(lambda ctx: worker.download_track(ctx, v)))
+    err = run(lambda c: c.fetchval("SELECT error FROM download_jobs WHERE video_id = $1", v))
+    assert "quota exceeded" in err and "not a bot" in err
+
+
+def test_rapidapi_polls_until_ready_and_caches(client, monkeypatch):
+    replies = iter([{"status": "processing", "msg": "in process"},
+                    {"status": "ok", "link": "https://cdn.example/a.mp3", "title": "T", "duration": 3.0}])
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        return httpx.Response(200, json=next(replies))
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **k: real(transport=httpx.MockTransport(handler), **k))
+    monkeypatch.setattr(config, "RAPIDAPI_KEY", "k")
+    v = vid()
+
+    async def go(ctx):
+        return [await youtube.rapidapi_mp3(ctx["redis"], v, wait_s=0) for _ in range(2)]
+    first, second = asyncio.run(with_ctx(go))
+    assert first == second == {"link": "https://cdn.example/a.mp3", "title": "T", "duration": 3.0}
+    assert len(seen) == 2 and seen[0].url.params["id"] == v and seen[0].headers["x-rapidapi-key"] == "k"  # the second call came from Redis
 
 
 def test_eviction_keeps_liked_and_track_rows(client, env, monkeypatch):

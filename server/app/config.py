@@ -31,6 +31,8 @@ DOWNLOAD_RETRIES = int(e("DOWNLOAD_RETRIES", "3"))
 CORS_ORIGINS = [o.strip().rstrip("/") for o in e("CORS_ORIGINS", "").split(",") if o.strip()]
 
 YTDLP_COOKIES_FILE =_path(e("YTDLP_COOKIES_FILE", "./cookies/cookies.txt"))
+# When yt-dlp fails (e.g. YouTube's bot check), RapidAPI's "YouTube MP3" (youtube-mp36) makes the MP3 instead. Empty = no fallback.
+RAPIDAPI_KEY = e("RAPIDAPI_KEY", "")
 
 # Autoplay (D51): web search for "similar songs", then an LLM reads the results. This method needs both keys.
 TAVILY_API_KEY = e("TAVILY_API_KEY", "")
