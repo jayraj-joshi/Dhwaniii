@@ -31,8 +31,9 @@ async def shutdown(ctx):
     await ctx["pool"].close()
 
 
-def _download(video_id: str, on_progress) -> dict:
-    """Blocking yt-dlp run: audio remuxed to PREF_CODEC at the D16 path, plus the thumbnail next to it."""
+def _download(video_id: str, on_progress, overwrite: bool = False) -> dict:
+    """Blocking yt-dlp run: audio remuxed to PREF_CODEC at the D16 path, plus the thumbnail next to it.
+    overwrite replaces a file already there; without it yt-dlp says "already downloaded" and keeps it."""
     out_dir = storage.abs_path(storage.audio_rel(video_id, "x")).parent
     out_dir.mkdir(parents=True, exist_ok=True)
     last = [0.0]
@@ -47,7 +48,7 @@ def _download(video_id: str, on_progress) -> dict:
     opts = youtube.ytdlp_opts(
         outtmpl=f"{out_dir}/{video_id}.%(ext)s", writethumbnail=True, noprogress=True, progress_hooks=[hook],
         postprocessors=[{"key": "FFmpegExtractAudio", "preferredcodec": config.PREF_CODEC, "preferredquality": "192"}],
-        retries=5, fragment_retries=5, concurrent_fragment_downloads=4)
+        retries=5, fragment_retries=5, concurrent_fragment_downloads=4, **({"overwrites": True} if overwrite else {}))
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
 
@@ -72,7 +73,7 @@ async def _download_rapidapi(redis, video_id: str) -> dict:
                     break
         codec = ["-c:a", "copy"] if config.PREF_CODEC == "mp3" else ["-c:a", "aac", "-b:a", "192k"]
         await asyncio.to_thread(subprocess.run, ["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-vn", *codec, str(audio)], check=True)
-    return {"title": mp3["title"], "duration": mp3["duration"]}
+    return {"title": mp3["title"], "duration": mp3["duration"], "rapidapi": True}
 
 
 def _is_permanent(msg: str) -> bool:
@@ -139,9 +140,9 @@ async def _finish(ctx, video_id: str, info: dict) -> int:
     await enrich.write_file_tags(pool, track_id, audio)
     bitrate = await asyncio.to_thread(storage.probe_bitrate_kbps, audio)  # bytes are read after tagging, so SUM(files.bytes) is exact
     await pool.execute(
-        "INSERT INTO files (source_id, path, codec, bitrate, bytes, loudness_lufs, gain_db) VALUES ($1, $2, $3, $4, $5, $6, $7) "
-        "ON CONFLICT (source_id) DO UPDATE SET path = $2, codec = $3, bitrate = $4, bytes = $5, loudness_lufs = $6, gain_db = $7",
-        source_id, storage.audio_rel(video_id, codec), codec, bitrate, audio.stat().st_size, lufs, gain)
+        "INSERT INTO files (source_id, path, codec, bitrate, bytes, loudness_lufs, gain_db, rapidapi) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) "
+        "ON CONFLICT (source_id) DO UPDATE SET path = $2, codec = $3, bitrate = $4, bytes = $5, loudness_lufs = $6, gain_db = $7, rapidapi = $8",
+        source_id, storage.audio_rel(video_id, codec), codec, bitrate, audio.stat().st_size, lufs, gain, bool(info.get("rapidapi")))
     # a track keeps one file: when a different source was chosen (M2.3-B), the file of the old one goes
     for r in await pool.fetch("DELETE FROM files f USING sources s WHERE s.id = f.source_id AND s.track_id = $1 AND f.source_id <> $2 RETURNING f.path", track_id, source_id):
         storage.abs_path(r["path"]).unlink(missing_ok=True)
@@ -193,6 +194,34 @@ async def feed_backlog(ctx):
             free -= 1
 
 
+REDOWNLOAD_PER_TICK = 3
+
+
+async def redownload_rapidapi(ctx):
+    """Swap the RapidAPI fallback's files for yt-dlp's (thumbnail, music fields) once YouTube lets us download again.
+    Stops at the first failure that may be YouTube blocking us; a video that is gone for good keeps its RapidAPI file."""
+    pool, done = ctx["pool"], 0
+    rows = await pool.fetch("SELECT s.video_id FROM files f JOIN sources s ON s.id = f.source_id WHERE f.rapidapi "
+                            "ORDER BY f.created_at LIMIT $1", REDOWNLOAD_PER_TICK)
+    for r in rows:
+        v = r["video_id"]
+        try:
+            info = await asyncio.to_thread(_download, v, lambda pct: None, True)
+            await _finish(ctx, v, info)
+        except Exception as e:
+            if _is_permanent(str(e)):
+                log.warning("RapidAPI file of %s stays: the video is gone (%s)", v, str(e)[:200])
+                await pool.execute("UPDATE files SET rapidapi = false FROM sources s WHERE s.id = files.source_id AND s.video_id = $1", v)
+                continue
+            log.warning("re-download of RapidAPI file %s failed, trying again next tick: %s", v, str(e)[:200])
+            break
+        done += 1
+        await publish_all(ctx["redis"], {"type": "track_cached", "video_id": v, "track_id": await pool.fetchval(
+            "SELECT track_id FROM sources WHERE video_id = $1", v)})
+        await asyncio.sleep(random.uniform(*POLITE_SLEEP))
+    return {"redownloaded": done, "picked": len(rows)}
+
+
 async def update_ytdlp(ctx):
     """Admin button (M4.4-B): update yt-dlp in this container's virtualenv, then restart onto it."""
     res = await admin.update_here()
@@ -207,7 +236,8 @@ async def evict(ctx):
 class Settings:
     functions = [download_track, update_ytdlp, func(importer.run_import, name="run_import", timeout=3600, max_tries=1),  # a retry would add every track twice
                  func(autoplay.autoplay_extend, name="autoplay_extend", timeout=150, max_tries=1)]  # a retry would spend Tavily/LLM/Gemini credits again
-    cron_jobs = [cron(feed_backlog, second={0, 30}), cron(evict, minute=0, second=0)]
+    cron_jobs = [cron(feed_backlog, second={0, 30}), cron(evict, minute=0, second=0),
+                 cron(redownload_rapidapi, minute={5, 35}, second=0, timeout=900)]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(config.REDIS_URL)

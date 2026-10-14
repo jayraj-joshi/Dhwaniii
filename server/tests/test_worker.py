@@ -45,8 +45,8 @@ def env(client, tmp_path, monkeypatch, media):
     calls = []
 
     def fake(info):
-        def _dl(video_id, on_progress):
-            calls.append(video_id)
+        def _dl(video_id, on_progress, overwrite=False):
+            calls.append((video_id, overwrite) if overwrite else video_id)
             a = storage.abs_path(storage.audio_rel(video_id, "m4a"))
             a.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(media / "a.m4a", a)
@@ -144,7 +144,7 @@ def test_download_without_prior_track_creates_one(client, env):
 
 
 def boom(msg):
-    def _dl(video_id, on_progress):
+    def _dl(video_id, on_progress, overwrite=False):
         raise RuntimeError(msg)
     return _dl
 
@@ -183,8 +183,9 @@ def test_transient_error_backoff_then_final_failure(client, env, monkeypatch):
 BOT = "ERROR: [youtube] x: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication."
 
 
-def test_rapidapi_fallback_when_ytdlp_is_blocked(client, env, monkeypatch, media):
-    _, _, root = env
+@pytest.fixture
+def rapid(monkeypatch, media):
+    """A blocked yt-dlp and a fake RapidAPI download. Returns the video ids RapidAPI was asked for."""
     monkeypatch.setattr(config, "RAPIDAPI_KEY", "k")
     monkeypatch.setattr(worker, "_download", boom(BOT))
     used = []
@@ -195,13 +196,44 @@ def test_rapidapi_fallback_when_ytdlp_is_blocked(client, env, monkeypatch, media
         a.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(media / "a.m4a", a)
         shutil.copy(media / "t.jpg", a.with_suffix(".jpg"))
-        return {"title": "Coldplay - Yellow (Official Video)", "duration": 3.0}
+        return {"title": "Coldplay - Yellow (Official Video)", "duration": 3.0, "rapidapi": True}
     monkeypatch.setattr(worker, "_download_rapidapi", _rapid)
+    return used
+
+
+def rapidapi_flag(v):
+    return run(lambda c: c.fetchval("SELECT f.rapidapi FROM files f JOIN sources s ON s.id = f.source_id WHERE s.video_id = $1", v))
+
+
+def test_rapidapi_fallback_when_ytdlp_is_blocked(client, env, rapid):
+    _, _, root = env
     v = vid()
     asyncio.run(with_ctx(lambda ctx: worker.download_track(ctx, v)))  # no Retry: the fallback made the file
-    assert used == [v]
+    assert rapid == [v] and rapidapi_flag(v) is True
     assert run(lambda c: c.fetchval("SELECT status FROM download_jobs WHERE video_id = $1", v)) == "done"
     assert (root / f"art/track/{v}.jpg").exists()
+
+
+def test_redownload_rapidapi_waits_for_youtube_then_replaces(client, env, rapid, monkeypatch):
+    fake, calls, root = env
+    v1, v2, gone = vid(), vid(), vid()
+    for v in (v1, v2, gone):
+        asyncio.run(with_ctx(lambda ctx: worker.download_track(ctx, v)))
+    run(lambda c: c.execute("UPDATE files f SET rapidapi = false FROM sources s WHERE s.id = f.source_id AND s.video_id <> ALL($1)", [v1, v2, gone]))
+
+    res = asyncio.run(with_ctx(worker.redownload_rapidapi))  # YouTube still blocks: stop at the first, keep them all
+    assert res == {"redownloaded": 0, "picked": 3} and all(rapidapi_flag(v) for v in (v1, v2, gone))
+
+    fake({"title": "x", "track": "Yellow", "artists": ["Coldplay"], "album": "Parachutes"})
+    ok = worker._download
+    monkeypatch.setattr(worker, "_download", lambda v, p, overwrite=False: boom("ERROR: [youtube] x: Private video")(v, p) if v == gone else ok(v, p, overwrite))
+    res = asyncio.run(with_ctx(worker.redownload_rapidapi))
+    assert res == {"redownloaded": 2, "picked": 3} and calls == [(v1, True), (v2, True)]
+    assert (rapidapi_flag(v1), rapidapi_flag(v2), rapidapi_flag(gone)) == (False, False, False)  # the gone one keeps its file, but is not retried
+    assert storage.abs_path(storage.audio_rel(gone, "m4a")).exists()
+    album = run(lambda c: c.fetchval("SELECT a.title FROM sources s JOIN tracks t ON t.id = s.track_id JOIN albums a ON a.id = t.album_id WHERE s.video_id = $1", v1))
+    assert album == "Parachutes"
+    assert asyncio.run(with_ctx(worker.redownload_rapidapi)) == {"redownloaded": 0, "picked": 0}
 
 
 @pytest.mark.parametrize("key,msg", [("k", "ERROR: [youtube] x: Private video. Sign in if you've been granted access"), ("", BOT)])
